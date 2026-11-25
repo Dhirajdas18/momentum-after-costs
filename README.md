@@ -150,7 +150,7 @@ the end. NIFTY 50 is bought once and taxed once, on the sale.
   after tax (median); every 12 months: 16.0%.
 - **Size barely mattered.** On ₹1 crore the band made 22.2% after tax against 22.6% on ₹10 lakh: the
   ₹1.25 lakh exemption is worth less to a bigger portfolio.
-### 6. No rebound crash here; its worst months came when NIFTY held up, and stepping aside didn't reliably help
+### 6. No rebound crash here; two of its worst months came while NIFTY held up, and stepping aside didn't reliably help
 
 <a href="docs/img/crash_paths.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/crash_paths.png"><img src="docs/img/crash_paths.gif" alt="Growth of 100 for the momentum portfolio, the 10-month NIFTY trend filter and NIFTY 50, with the filter's months in cash shaded" width="720"></picture></a>
 
