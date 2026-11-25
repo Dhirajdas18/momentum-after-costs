@@ -20,7 +20,7 @@ data by GitHub Actions.
 - [x] Portfolio construction: number of stocks, weights, industry caps, and the gap to the index
 - [x] Costs and turnover: delivery charges, rebalance frequency with start-month luck, hold bands
 - [x] Tax: short- and long-term gains with lot-by-lot accounting, holding periods, buy and hold
-- [ ] Momentum crashes: a market filter and volatility scaling
+- [x] Momentum crashes: worst spells, a NIFTY trend filter and volatility scaling
 - [ ] Against the Nifty200 Momentum 30 fund and NIFTY after costs and tax
 
 ## Findings
@@ -147,13 +147,38 @@ the end. NIFTY 50 is bought once and taxed once, on the sale.
   sat in between (after tax, medians 17.7% and 16.1%).
 - **Size barely mattered.** On ₹1 crore the band made 22.2% after tax against 22.6% on ₹10 lakh: the
   ₹1.25 lakh exemption is worth less to a bigger portfolio.
+### 6. No classic momentum crash here; its bad spells were mid-cap sell-offs, and stepping aside didn't reliably help
+
+<a href="docs/img/crash_paths.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/crash_paths.png"><img src="docs/img/crash_paths.gif" alt="Growth of 100 for the momentum portfolio, the 10-month NIFTY trend filter and NIFTY 50, with the filter's months in cash shaded" width="720"></picture></a>
+
+<a href="docs/img/crash_overlays.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/crash_overlays.png"><img src="docs/img/crash_overlays.gif" alt="Sharpe and worst drawdown for momentum, three trend filters, three volatility targets and NIFTY 50" width="720"></picture></a>
+
+The monthly band-40 portfolio after delivery costs (findings 4 and 5), February 2014 to November 2026,
+before tax and without dividends; cash earns 6.5% a year. The trend filter holds cash for a month when
+NIFTY ended the last month below its average of the last 6, 10 or 12 month-ends. Volatility scaling
+holds target ÷ the portfolio's volatility over the last 12 months (never more than fully invested).
+Moving in and out costs about 0.17% a side; the tax on those extra sales is left out. The archive
+starts in 2013, so 2008 and its rebound are not in it.
+
+- **No rebound crash.** The textbook momentum crash comes when a falling market turns up sharply. Here,
+  in the 26 months NIFTY rose more than 5%, momentum matched the average stock (+0.04% a month); in
+  months below NIFTY's 10-month average its edge was larger (+10.4% a year against +8.6%).
+- **Its bad spells were mid-cap sell-offs.** Worst months: March 2020 −22.5% (NIFTY −23.2%), January 2025
+  −15.1% (NIFTY −0.6%), September 2018 −14.9% (NIFTY −6.4%). Its deepest drawdowns, −31.5% to March 2020
+  and −29.6% from July 2024 to February 2025, were deeper than NIFTY's in the second case (−14.3%).
+- **Stepping aside lowered return and mostly lowered the Sharpe.** Momentum alone made 24.8% a year with
+  a Sharpe of 0.81 (NIFTY 0.37). A 10-month filter made 19.1% (Sharpe 0.75), 12 months 20.1% (0.72);
+  only 6 months raised it (21.6%, Sharpe 0.90, worst drawdown −24.3%). Volatility targets of 15–25% gave
+  Sharpes of 0.64–0.76.
+- **One good setting among six is not a rule.** The 6-month filter's gain sits next to two filter
+  lengths that lost, and every filter adds taxable sales; none is a reliable improvement on these years.
 
 ## Quick start
 
 ```bash
 uv sync
 uv run python scripts/fetch_data.py         # Yahoo Finance -> data/prices.parquet
-MO_LAKE_DIR=... uv run mo report signal     # also: universe, portfolio, costs, tax
+MO_LAKE_DIR=... uv run mo report signal     # also: universe, portfolio, costs, tax, crash
 uv run python scripts/build_site.py         # momentum lab -> site/index.html
 uv run pytest
 ```
@@ -169,6 +194,8 @@ NIFTY 200 file. Event studies on delisted stocks can read a local NSE bhavcopy a
   committed.
 - `src/mo/tax.py`: a rupee simulator of the same rule with first-in, first-out lots, short- and
   long-term gains, set-off, carried losses and yearly tax; its pre-tax path matches the backtest.
+- `src/mo/crash.py`: the trend filter, volatility scaling and drawdown table, each deciding at one
+  month-end for the next month.
 - `src/mo/signals.py`: the momentum signals and their monthly evaluation (rank IC, top 20 against the
   universe, quintiles).
 

@@ -766,10 +766,159 @@ def report_tax(out_dir: Path) -> dict:
     return res
 
 
+def report_crash(out_dir: Path) -> dict:
+    """Momentum crashes on the point-in-time universe (needs MO_LAKE_DIR): the monthly band-40
+    portfolio after delivery costs, its worst months and drawdowns against NIFTY and the average
+    stock, and two ways of stepping aside (a NIFTY trend filter, volatility scaling). Before tax,
+    no dividends; cash earns 6.5%."""
+    from mo.crash import RF, drawdowns, market_filter, vol_scale
+    from mo.momentum import (
+        annual_vol,
+        backtest,
+        cagr,
+        delivery_costs,
+        max_drawdown,
+        month_end_prices,
+    )
+    from mo.signals import score_frame, signal_panel
+    from mo.universe import load_lake, load_universe
+
+    res = {}
+    px, _ = load_lake()
+    monthly = month_end_prices(px)
+    panel = signal_panel(px, universe=load_universe())
+    sc = score_frame(panel, "NSE-style volatility-adjusted")
+    market = pd.read_parquet(Path(os.environ["MO_LAKE_DIR"]) / "market.parquet").set_index("date")
+    nifty = month_end_prices(market[["nifty"]].dropna())["nifty"]
+    r = backtest(monthly, sc, top_n=20, keep_rank=40, costs=delivery_costs())["net"]
+    nr = nifty.pct_change().reindex(r.index).fillna(0.0)
+    ew = panel.groupby("date")["next"].mean()
+    ew.index = monthly.index[monthly.index.get_indexer(ew.index) + 1]
+    ew = ew.reindex(r.index)
+
+    def stats(x):
+        e = (1 + x).cumprod()
+        v = annual_vol(x)
+        return {
+            "cagr": cagr(e),
+            "vol": v,
+            "dd": max_drawdown(e),
+            "sharpe": float((x - RF / 12).mean() * 12 / v),
+        }
+
+    series = {"momentum (band 40, after costs)": r, "NIFTY 50": nr, "average stock": ew}
+    exposure = {}
+    for m in (6, 10, 12):
+        series[f"trend filter, {m} months"], exposure[m] = market_filter(r, nifty, m)
+    for tv in (0.15, 0.20, 0.25):
+        series[f"volatility target {tv:.0%}"], exposure[tv] = vol_scale(r, tv)
+    st = {k: stats(v) for k, v in series.items()}
+    invested = {f"trend filter, {m} months": exposure[m] for m in (6, 10, 12)}
+    invested |= {f"volatility target {tv:.0%}": exposure[tv] for tv in (0.15, 0.20, 0.25)}
+    for k, v in st.items():
+        extra = f", invested {invested[k].mean():.0%} on average" if k in invested else ""
+        res[k] = (
+            f"{100 * v['cagr']:.1f}% a year, volatility {100 * v['vol']:.1f}%, worst drawdown "
+            f"{100 * v['dd']:.1f}%, Sharpe {v['sharpe']:.2f}{extra}"
+        )
+    res["period"] = f"{r.index[0]:%b %Y} to {r.index[-1]:%b %Y}"
+    for name, x in (("momentum", r), ("NIFTY 50", nr)):
+        d = drawdowns((1 + x).cumprod(), 4)
+        res[f"deepest drawdowns, {name}"] = "; ".join(
+            f"{row.peak:%b %Y}-{row.trough:%b %Y} {100 * row.depth:.1f}%" for row in d.itertuples()
+        )
+    worst = pd.DataFrame({"mom": r, "nifty": nr, "ew": ew}).nsmallest(5, "mom")
+    res["momentum's worst months (momentum, NIFTY, average stock)"] = "; ".join(
+        f"{d:%b %Y} {100 * w.mom:+.1f}, {100 * w.nifty:+.1f}, {100 * w.ew:+.1f}"
+        for d, w in worst.iterrows()
+    )
+    ex = r - ew
+    below = (nifty < nifty.rolling(10).mean()).shift(1).reindex(r.index).fillna(False).astype(bool)
+    res["edge over the average stock"] = (
+        f"{100 * ex[~below].mean() * 12:+.1f}% a year when NIFTY was above its 10-month average, "
+        f"{100 * ex[below].mean() * 12:+.1f}% when below ({int(below.sum())} months); in months "
+        f"NIFTY rose more than 5% {100 * ex[nr > 0.05].mean():+.2f}% a month "
+        f"({int((nr > 0.05).sum())} months), fell more than 5% {100 * ex[nr < -0.05].mean():+.2f}% "
+        f"({int((nr < -0.05).sum())})"
+    )
+
+    fig, ax = plt.subplots(figsize=(10, 4.4))
+    for k, c, ls in (
+        ("momentum (band 40, after costs)", plots.SERIES[0], "-"),
+        ("trend filter, 10 months", plots.SERIES[2], "-"),
+        ("NIFTY 50", plots.SERIES[1], "-"),
+    ):
+        e = 100 * (1 + series[k]).cumprod()
+        ax.plot(e.index, e, color=c, lw=1.6, ls=ls)
+        plots.label_line_end(ax, e.index[-1], e.iloc[-1], f"{k} {100 * st[k]['cagr']:.1f}%", c)
+    out_months = exposure[10][exposure[10] == 0].index
+    for d in out_months:
+        ax.axvspan(d - pd.Timedelta(days=30), d, color=plots.GRID, alpha=0.6, lw=0)
+    ax.set_yscale("log")
+    ticks = [100, 200, 400, 800, 1600]
+    ax.set_yticks(ticks, [str(t) for t in ticks])
+    ax.minorticks_off()
+    ax.set_ylabel("growth of 100, log scale")
+    ax.set_title(
+        "Shaded: months the 10-month NIFTY filter held cash",
+        fontsize=10,
+        fontweight="normal",
+        loc="left",
+    )
+    ax.margins(x=0.32)
+    fig.tight_layout()
+    plots.save(fig, out_dir, "crash_paths")
+
+    names = [
+        "momentum (band 40, after costs)",
+        "trend filter, 6 months",
+        "trend filter, 10 months",
+        "trend filter, 12 months",
+        "volatility target 15%",
+        "volatility target 20%",
+        "volatility target 25%",
+        "NIFTY 50",
+    ][::-1]
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.4), sharey=True)
+    col = [
+        plots.SERIES[0]
+        if k.startswith("momentum")
+        else plots.SERIES[1]
+        if k == "NIFTY 50"
+        else plots.MUTED
+        for k in names
+    ]
+    for ax, key, lab in (
+        (axes[0], "sharpe", "Sharpe (above 6.5% cash)"),
+        (axes[1], "dd", "worst drawdown, %"),
+    ):
+        v = [st[k][key] * (100 if key == "dd" else 1) for k in names]
+        ax.barh(names, v, color=col, height=0.55)
+        for i, x in enumerate(v):
+            if key == "dd":
+                ax.text(
+                    x - 0.4, i, f"{x:.0f}%", va="center", ha="right", fontsize=9, color=plots.TEXT
+                )
+            else:
+                ax.text(x + 0.01, i, f"{x:.2f}", va="center", fontsize=9, color=plots.TEXT)
+        ax.set_xlabel(lab)
+    axes[0].set_xlim(0, 1.05)
+    axes[1].set_xlim(-38, 0)
+    fig.suptitle(
+        "Stepping aside cut drawdowns a little; only one setting raised the Sharpe",
+        x=0.02,
+        ha="left",
+    )
+    fig.tight_layout()
+    plots.save(fig, out_dir, "crash_overlays")
+    return res
+
+
 REPORTS: dict[str, Callable[[Path], dict]] = {
     "signal": report_signal,
     "universe": report_universe,
     "portfolio": report_portfolio,
     "costs": report_costs,
     "tax": report_tax,
+    "crash": report_crash,
 }
