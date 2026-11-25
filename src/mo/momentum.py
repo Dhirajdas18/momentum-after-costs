@@ -69,8 +69,37 @@ def vol_adjusted_score(
     return pd.DataFrame(score, index=z.index, columns=z.columns).reindex(dates)
 
 
-def _backtest_arrays(px: np.ndarray, sc: np.ndarray, top_n: int, every: int, cost: float) -> dict:
-    """Array core of `backtest` (rows are months, columns stocks; NaN for missing)."""
+def _cap_weights(w: np.ndarray, cap: float) -> np.ndarray:
+    """Scale weights (summing to 1) so none exceeds `cap`, handing the excess to the rest in
+    proportion (repeated until it fits; needs cap * count >= 1)."""
+    w = w.copy()
+    for _ in range(50):
+        over = w > cap + 1e-12
+        if not over.any():
+            break
+        excess = float((w[over] - cap).sum())
+        w[over] = cap
+        free = ~over & (w > 0)
+        w[free] += excess * w[free] / w[free].sum()
+    return w
+
+
+def _backtest_arrays(
+    px: np.ndarray,
+    sc: np.ndarray,
+    top_n: int,
+    every: int,
+    cost: float,
+    tilt: np.ndarray | None = None,
+    group: np.ndarray | None = None,
+    max_per_group: int | None = None,
+    max_weight: float | None = None,
+) -> dict:
+    """Array core of `backtest` (rows are months, columns stocks; NaN for missing). Optional:
+    `tilt` (same shape) sets target weights in proportion to its value for the picked stocks
+    (missing or non-positive -> equal weight for that month); `group` (one label per column) with
+    `max_per_group` skips a stock once its group already has that many picks; `max_weight` caps
+    any one weight."""
     t_len, n = px.shape
     valid = ~np.isnan(sc) & ~np.isnan(px)
     starts = [i for i in range(t_len - 1) if valid[i].any()]
@@ -98,10 +127,28 @@ def _backtest_arrays(px: np.ndarray, sc: np.ndarray, top_n: int, every: int, cos
         if i in rebal:
             cand = np.flatnonzero(valid[i])
             order = cand[np.argsort(-sc[i, cand], kind="stable")]  # ties: column order
-            pick = order[:top_n]
+            if group is None or max_per_group is None:
+                pick = order[:top_n]
+            else:
+                taken, chosen = {}, []
+                for j in order:
+                    k = group[j]
+                    if k is not None and taken.get(k, 0) >= max_per_group:
+                        continue
+                    taken[k] = taken.get(k, 0) + 1
+                    chosen.append(j)
+                    if len(chosen) == top_n:
+                        break
+                pick = np.array(chosen, dtype=int)
             target = np.zeros(n)
             if len(pick):
                 target[pick] = 1.0 / len(pick)
+                if tilt is not None:
+                    t = tilt[i, pick]
+                    if np.all(np.isfinite(t)) and np.all(t > 0):
+                        target[pick] = t / t.sum()
+                if max_weight is not None:
+                    target[pick] = _cap_weights(target[pick], max_weight)
             tv = float(np.abs(target - w).sum())
             turn.append(tv)
             costs.append(cost * tv)
@@ -129,6 +176,10 @@ def backtest(
     rebalance_every: int = 1,
     cost_per_side: float = 0.003,
     weights: str = "equal",
+    tilt: pd.DataFrame | None = None,
+    group: dict | None = None,
+    max_per_group: int | None = None,
+    max_weight: float | None = None,
 ) -> dict:
     """Long-only top-N momentum portfolio, rebalanced every `rebalance_every` months.
 
@@ -150,14 +201,26 @@ def backtest(
     the first rebalance), turnover and cost per rebalance, and holdings per rebalance.
     """
     if weights != "equal":
-        raise ValueError("only weights='equal' is supported")
+        raise ValueError("weights is 'equal'; pass `tilt` for other weightings")
     score = score.reindex(index=monthly_prices.index, columns=monthly_prices.columns)
+    t_arr = None
+    if tilt is not None:
+        t_arr = tilt.reindex(index=monthly_prices.index, columns=monthly_prices.columns).to_numpy(
+            float
+        )
+    g_arr = None
+    if group is not None:
+        g_arr = np.array([group.get(c) for c in monthly_prices.columns], dtype=object)
     res = _backtest_arrays(
         monthly_prices.to_numpy(float),
         score.to_numpy(float),
         top_n,
         rebalance_every,
         cost_per_side,
+        tilt=t_arr,
+        group=g_arr,
+        max_per_group=max_per_group,
+        max_weight=max_weight,
     )
     dates = monthly_prices.index
     cols = monthly_prices.columns

@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from mo import plots
+from mo.data import ROOT
 
 
 def prices() -> pd.DataFrame:
@@ -339,7 +340,160 @@ def report_universe(out_dir: Path) -> dict:
     return res
 
 
+def report_portfolio(out_dir: Path) -> dict:
+    """Building the portfolio from the NSE-style score on the point-in-time universe (needs
+    MO_LAKE_DIR): how many stocks, how to weight them, industry caps, and how much of the gap to
+    the Nifty200 Momentum 30 index weighting explains. Before costs, no dividends."""
+    from mo.momentum import annual_vol, backtest, cagr, max_drawdown, month_end_prices
+    from mo.signals import _ratio_vol, score_frame, signal_panel
+    from mo.universe import load_lake, load_universe
+
+    res = {}
+    px, _ = load_lake()
+    uni = load_universe()
+    monthly = month_end_prices(px)
+    sc = score_frame(signal_panel(px, universe=uni), "NSE-style volatility-adjusted")
+    vol = _ratio_vol(px, monthly)
+    u = uni.assign(m=uni["date"].dt.to_period("M"))
+    size = u.groupby(["m", "symbol"])["med_turnover_cr"].last().unstack()
+    month_of = pd.Series(monthly.index, index=monthly.index.to_period("M"))
+    size = size[size.index.isin(month_of.index)]
+    size.index = month_of.loc[size.index].to_numpy()
+    industry = pd.read_csv(ROOT / "docs" / "data" / "nifty500_industry.csv")
+    industry = dict(zip(industry["symbol"], industry["industry"], strict=True))
+    market = pd.read_parquet(Path(os.environ["MO_LAKE_DIR"]) / "market.parquet").set_index("date")
+    mom = month_end_prices(market[["mom30_index"]].dropna())["mom30_index"]
+
+    def run(name, **kw):
+        b = backtest(monthly, sc, cost_per_side=0.0, **kw)
+        e = b["equity"]["gross"]
+        yrs = (e.index[-1] - e.index[0]).days / 365.25
+        a, ix = e.loc[mom.index[0] :], mom.loc[: e.index[-1]]
+        out = {
+            "cagr": cagr(e),
+            "vol": annual_vol(e.pct_change().dropna()),
+            "dd": max_drawdown(e),
+            "turnover": float(b["turnover"].iloc[1:].sum() / yrs),
+            "recent": cagr(a / a.iloc[0]),
+            "index": cagr(ix / ix.iloc[0]),
+            "holdings": b["holdings"],
+        }
+        res[name] = (
+            f"{100 * out['cagr']:.1f}% a year, volatility {100 * out['vol']:.1f}%, worst drawdown "
+            f"{100 * out['dd']:.1f}%, traded {out['turnover']:.1f}x the portfolio a year; "
+            f"{a.index[0]:%b %Y}-{a.index[-1]:%b %Y} {100 * out['recent']:.1f}% against the "
+            f"index's {100 * out['index']:.1f}%"
+        )
+        return out
+
+    sizes = {n: run(f"{n} stocks, equal weight", top_n=n) for n in (10, 20, 30, 50)}
+    w = {
+        "equal": sizes[30],
+        "inverse volatility": run("30 stocks, inverse volatility", top_n=30, tilt=1 / vol),
+        "score": run("30 stocks, by score", top_n=30, tilt=sc),
+        "size": run("30 stocks, by size (turnover)", top_n=30, tilt=size),
+        "score x size": run("30 stocks, score x size", top_n=30, tilt=sc * size),
+        "score x size, 5% cap": run(
+            "30 stocks, score x size, 5% cap", top_n=30, tilt=sc * size, max_weight=0.05
+        ),
+        "score x size, 5% cap, every 6 months": run(
+            "30 stocks, score x size, 5% cap, every 6 months",
+            top_n=30,
+            tilt=sc * size,
+            max_weight=0.05,
+            rebalance_every=6,
+        ),
+    }
+    {
+        k: run(f"20 stocks, at most {k} per industry", top_n=20, group=industry, max_per_group=k)
+        for k in (3, 2)
+    }
+    picks = [s for h in sizes[20]["holdings"].values() for s in h]
+    res["industry known (today's NIFTY 500 list)"] = (
+        f"{np.mean([s in industry for s in picks]):.0%} of 20-stock picks; "
+        "unknown ones are not capped"
+    )
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.2), sharex=True)
+    ns = [10, 20, 30, 50]
+    for ax, key, lab, c in (
+        (axes[0], "cagr", "return, % a year", plots.SERIES[0]),
+        (axes[1], "dd", "worst drawdown, %", plots.SERIES[1]),
+    ):
+        v = [100 * sizes[n][key] for n in ns]
+        ax.bar([str(n) for n in ns], v, color=c, width=0.55)
+        for i, x in enumerate(v):
+            ax.text(
+                i,
+                x + (0.4 if x >= 0 else -0.4),
+                f"{x:.1f}%",
+                ha="center",
+                va="bottom" if x >= 0 else "top",
+                fontsize=9,
+                color=plots.TEXT,
+            )
+        ax.set_xlabel("stocks held")
+        ax.set_ylabel(lab)
+    axes[1].set_ylim(-52, 0)
+    fig.suptitle(
+        "Fewer stocks, more return and deeper falls (equal weight, monthly, before costs)",
+        x=0.02,
+        ha="left",
+    )
+    fig.tight_layout()
+    plots.save(fig, out_dir, "portfolio_size")
+
+    fig, ax = plt.subplots(figsize=(10, 4.4))
+    names = list(w)
+    xs = np.arange(len(names))
+    ax.bar(
+        xs - 0.2,
+        [100 * w[k]["cagr"] for k in names],
+        0.38,
+        color=plots.SERIES[0],
+        label="Jan 2014 to Nov 2026",
+    )
+    ax.bar(
+        xs + 0.2,
+        [100 * w[k]["recent"] for k in names],
+        0.38,
+        color=plots.SERIES[2],
+        label=f"{mom.index[0]:%b %Y} to Nov 2026",
+    )
+    ax.axhline(
+        100 * w["equal"]["index"],
+        color=plots.SERIES[1],
+        lw=1.2,
+        ls="--",
+        label=f"Nifty200 Momentum 30, {mom.index[0]:%b %Y} to Nov 2026",
+    )
+    ax.set_xticks(
+        xs,
+        [
+            "equal",
+            "inverse\nvolatility",
+            "score",
+            "size",
+            "score\n× size",
+            "score × size\n5% cap",
+            "score × size\n5% cap, 6-monthly",
+        ],
+    )
+    ax.set_ylabel("% a year, before costs")
+    ax.legend(fontsize=8, loc="upper right")
+    ax.set_title(
+        "30 stocks: weighting by size took away most of the edge",
+        fontsize=10,
+        fontweight="normal",
+        loc="left",
+    )
+    fig.tight_layout()
+    plots.save(fig, out_dir, "portfolio_weights")
+    return res
+
+
 REPORTS: dict[str, Callable[[Path], dict]] = {
     "signal": report_signal,
     "universe": report_universe,
+    "portfolio": report_portfolio,
 }

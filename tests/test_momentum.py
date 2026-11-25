@@ -122,8 +122,9 @@ def _random_book(seed=0, months=60, stocks=15):
     px[:20, 0] = np.nan  # a late listing
     px[40:43, 1] = np.nan  # a gap
     cols = [f"S{i:02d}" for i in range(stocks)]
-    return pd.DataFrame(px, index=pd.date_range("2015-01-31", periods=months, freq="ME"),
-                        columns=cols)
+    return pd.DataFrame(
+        px, index=pd.date_range("2015-01-31", periods=months, freq="ME"), columns=cols
+    )
 
 
 def test_no_look_ahead_future_prices_do_not_change_holdings():
@@ -147,9 +148,35 @@ def test_rejects_other_weightings():
 
 
 def test_summary_stats():
-    eq = pd.Series([1.0, 1.2, 0.9, 1.21], index=pd.to_datetime(
-        ["2020-01-01", "2020-07-01", "2021-01-01", "2022-01-01"]))
+    eq = pd.Series(
+        [1.0, 1.2, 0.9, 1.21],
+        index=pd.to_datetime(["2020-01-01", "2020-07-01", "2021-01-01", "2022-01-01"]),
+    )
     assert cagr(eq) == pytest.approx(1.21 ** (365.25 / 731) - 1)
     assert max_drawdown(eq) == pytest.approx(0.9 / 1.2 - 1)
     r = pd.Series([0.01, -0.02, 0.03])
     assert annual_vol(r) == pytest.approx(np.std(r, ddof=1) * np.sqrt(12))
+
+
+def test_tilt_group_cap_and_weight_cap():
+    import numpy as np
+    import pandas as pd
+
+    from mo.momentum import _cap_weights, backtest
+
+    idx = pd.date_range("2020-01-31", periods=4, freq="ME")
+    px = pd.DataFrame(
+        {"A": [1, 1.1, 1.2, 1.3], "B": [1, 1, 1, 1], "C": [1, 0.9, 0.8, 0.7]}, index=idx
+    )
+    sc = pd.DataFrame(
+        {"A": [3, 3, 3, 3], "B": [2, 2, 2, 2], "C": [1, 1, 1, 1]}, index=idx, dtype=float
+    )
+    tilt = pd.DataFrame({"A": [3.0] * 4, "B": [1.0] * 4, "C": [1.0] * 4}, index=idx)
+    bt = backtest(px, sc, top_n=2, cost_per_side=0.0, tilt=tilt)
+    assert np.isclose(bt["gross"].iloc[0], 0.75 * 0.1 + 0.25 * 0.0)
+    g = backtest(
+        px, sc, top_n=2, cost_per_side=0.0, group={"A": "x", "B": "x", "C": "y"}, max_per_group=1
+    )
+    assert g["holdings"][idx[0]] == ["A", "C"]
+    w = _cap_weights(np.array([0.7, 0.2, 0.1]), 0.5)
+    assert np.isclose(w.sum(), 1) and w.max() <= 0.5 + 1e-12

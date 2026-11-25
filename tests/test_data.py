@@ -22,8 +22,12 @@ def test_universe_snapshot_is_nifty200_with_industries():
 
 def test_yahoo_tickers():
     t = tickers(["NIFTY", "NIFTY200", "MOMENTUM", "M&M"])
-    assert t == {"^NSEI": "NIFTY", "^CNX200": "NIFTY200", "MOMENTUM.NS": "MOMENTUM",
-                 "M&M.NS": "M&M"}
+    assert t == {
+        "^NSEI": "NIFTY",
+        "^CNX200": "NIFTY200",
+        "MOMENTUM.NS": "MOMENTUM",
+        "M&M.NS": "M&M",
+    }
 
 
 def test_short_history_is_not_missing():
@@ -41,12 +45,22 @@ def _fixes(tmp_path, rows):
 
 def test_zero_blank_and_start_fixes(tmp_path):
     idx = pd.bdate_range("2020-01-01", periods=5)
-    px = pd.DataFrame({"A": [100.0, 50.0, 51.0, 52.0, 53.0],  # day 1: unadjusted split -> zero
-                       "B": [10.0, 1.0, 10.5, 10.6, 10.7],    # day 1: bad print -> blank
-                       "C": [99.0, 98.0, 5.0, 5.1, 5.2]},     # real history starts on day 2
-                      index=idx)
-    fixes = _fixes(tmp_path, [["A", idx[1].date(), "zero", ""], ["B", idx[1].date(), "blank", ""],
-                              ["C", idx[2].date(), "start", ""]])
+    px = pd.DataFrame(
+        {
+            "A": [100.0, 50.0, 51.0, 52.0, 53.0],  # day 1: unadjusted split -> zero
+            "B": [10.0, 1.0, 10.5, 10.6, 10.7],  # day 1: bad print -> blank
+            "C": [99.0, 98.0, 5.0, 5.1, 5.2],
+        },  # real history starts on day 2
+        index=idx,
+    )
+    fixes = _fixes(
+        tmp_path,
+        [
+            ["A", idx[1].date(), "zero", ""],
+            ["B", idx[1].date(), "blank", ""],
+            ["C", idx[2].date(), "start", ""],
+        ],
+    )
     r = daily_returns(px, fixes)
     assert r.loc[idx[1], "A"] == 0.0
     assert r.loc[idx[1], "B"] == 0.0 and r.loc[idx[2], "B"] == pytest.approx(0.05)

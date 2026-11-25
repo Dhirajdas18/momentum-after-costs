@@ -54,8 +54,14 @@ def test_browser_backtest_matches_python(n, every, cost):
     py = mom._backtest_arrays(px.to_numpy(), score.to_numpy(), n, every, cost)
     assert js["start"] == py["start"] and js["rebalances"] == py["rebalances"]
     assert js["holdings"] == py["holdings"]
-    for jk, pk in [("gross", "gross"), ("net", "net"), ("equityGross", "equity_gross"),
-                   ("equityNet", "equity_net"), ("turnover", "turnover"), ("cost", "cost")]:
+    for jk, pk in [
+        ("gross", "gross"),
+        ("net", "net"),
+        ("equityGross", "equity_gross"),
+        ("equityNet", "equity_net"),
+        ("turnover", "turnover"),
+        ("cost", "cost"),
+    ]:
         assert js[jk] == pytest.approx(py[pk].tolist(), rel=1e-9, abs=1e-12), jk
     res = mom.backtest(px, score, n, every, cost)
     dates = json.dumps(list(res["equity"].index.strftime("%Y-%m-%d")))
@@ -64,6 +70,9 @@ def test_browser_backtest_matches_python(n, every, cost):
         f"return [m.cagr(r.equityNet, {dates}), m.annualVol(r.net), m.maxDrawdown(r.equityNet)];"
         "})()"
     )
-    want = [mom.cagr(res["equity"]["net"]), mom.annual_vol(res["net"]),
-            mom.max_drawdown(res["equity"]["net"])]
+    want = [
+        mom.cagr(res["equity"]["net"]),
+        mom.annual_vol(res["net"]),
+        mom.max_drawdown(res["equity"]["net"]),
+    ]
     assert stats == pytest.approx(want, rel=1e-9)

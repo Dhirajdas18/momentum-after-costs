@@ -8,8 +8,11 @@ def _toy(seed=0, n=60, days=900):
     rng = np.random.default_rng(seed)
     idx = pd.bdate_range("2012-01-02", periods=days)
     drift = np.linspace(-0.001, 0.001, n)
-    px = pd.DataFrame(np.exp(np.cumsum(rng.normal(drift, 0.01, (days, n)), axis=0)), index=idx,
-                      columns=[f"S{i}" for i in range(n)])
+    px = pd.DataFrame(
+        np.exp(np.cumsum(rng.normal(drift, 0.01, (days, n)), axis=0)),
+        index=idx,
+        columns=[f"S{i}" for i in range(n)],
+    )
     to = pd.DataFrame(rng.uniform(1, 2, (days, n)), index=idx, columns=px.columns)
     return px, to
 

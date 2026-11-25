@@ -17,7 +17,7 @@ data by GitHub Actions.
 
 - [x] The signal out of sample: 12-1, 6-1, 12-0 and 3-month returns and NSE's volatility-adjusted score
 - [x] Survivorship and liquidity: a point-in-time universe against today's list, universe size, turnover rule
-- [ ] Portfolio construction: number of stocks, weights and sector caps
+- [x] Portfolio construction: number of stocks, weights, industry caps, and the gap to the index
 - [ ] Costs and turnover: delivery charges, rebalance frequency and hold bands
 - [ ] Tax: short- and long-term gains and holding periods
 - [ ] Momentum crashes: a market filter and volatility scaling
@@ -78,13 +78,38 @@ too), January 2014 to November 2026: the point-in-time universe of finding 1, or
 - **Liquidity grew.** The number of the top 200 with a median daily turnover of ₹50 crore (the reference model's
   rule) rose from 64 in 2014 to 200 in 2026; keeping only those, the top 20 made 21.5% a year. A held
   stock traded a median ₹82 crore a day, so ₹50 lakh a stock (a ₹10 crore book) is 0.6% of a day.
+### 3. Equal weight kept the edge; weighting by size, as the index does, gave most of it back
+
+<a href="docs/img/portfolio_weights.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/portfolio_weights.png"><img src="docs/img/portfolio_weights.gif" alt="Return for seven weightings of 30 stocks over 2014-2026 and 2020-2026, against the Nifty200 Momentum 30 index" width="720"></picture></a>
+
+<a href="docs/img/portfolio_size.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/portfolio_size.png"><img src="docs/img/portfolio_size.gif" alt="Return and worst drawdown for 10, 20, 30 and 50 stocks in equal weight" width="720"></picture></a>
+
+The rule of finding 2 (NSE-style score, point-in-time universe, monthly, before costs, no dividends),
+January 2014 to November 2026, with one choice changed at a time. Size is each stock's median daily
+turnover, the archive's stand-in for market value; industries come from today's NIFTY 500 list, which
+covers 83% of the stocks picked (the rest are not capped).
+
+- **Fewer stocks, more return and deeper falls.** 10 stocks made 30.4% a year with a −45.7% worst
+  drawdown; 20 stocks 27.1% and −33.9%; 30 stocks 25.7% and −28.9%; 50 stocks 23.5% and −25.7%.
+  Return per unit of volatility was about the same (1.1–1.2).
+- **Weighting by size gave most of the edge back.** With 30 stocks: equal weight 25.7% a year, by size
+  16.9%, by score × size (the index's idea) 18.3%. Weighting by score alone did a little better than
+  equal (28.1%), and inverse volatility a little worse (24.1%).
+- **That explains part of the gap to the index.** Over August 2020 to November 2026, equal-weight 30
+  stocks made 32.8% a year; score × size 24.3%; with a 5% cap and 6-monthly reviews, closer to the
+  index's rules, 25.6%; the index made 16.2%. The rest is likely the universe (most traded against the
+  largest by free-float market value) and NSE's buffers.
+- **Industry caps cut drawdowns, not return.** At most 3 of 20 from one industry: 27.0% a year with a
+  −29.2% worst drawdown, against 27.1% and −33.9% uncapped.
+- **Every version traded a lot.** Monthly rebalancing turned over 6–10 times the portfolio a year
+  (2.9 times when reviewed every 6 months), which finding 4 prices.
 
 ## Quick start
 
 ```bash
 uv sync
 uv run python scripts/fetch_data.py         # Yahoo Finance -> data/prices.parquet
-MO_LAKE_DIR=... uv run mo report signal     # also: universe; needs a local NSE bhavcopy archive
+MO_LAKE_DIR=... uv run mo report signal     # also: universe, portfolio; needs a local NSE archive
 uv run python scripts/build_site.py         # momentum lab -> site/index.html
 uv run pytest
 ```
