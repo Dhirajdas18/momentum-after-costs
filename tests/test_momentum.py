@@ -180,3 +180,38 @@ def test_tilt_group_cap_and_weight_cap():
     assert g["holdings"][idx[0]] == ["A", "C"]
     w = _cap_weights(np.array([0.7, 0.2, 0.1]), 0.5)
     assert np.isclose(w.sum(), 1) and w.max() <= 0.5 + 1e-12
+
+
+def test_hold_band_keeps_a_slipping_winner_without_trimming():
+    import numpy as np
+    import pandas as pd
+
+    from mo.momentum import backtest
+
+    idx = pd.date_range("2020-01-31", periods=4, freq="ME")
+    px = pd.DataFrame(
+        {"A": [1, 2, 2, 2], "B": [1, 1, 1, 1], "C": [1, 1, 1, 1]}, index=idx, dtype=float
+    )
+    sc = pd.DataFrame(
+        {"A": [3, 1, 1, 1], "B": [2, 3, 3, 3], "C": [1, 2, 2, 2]}, index=idx, dtype=float
+    )
+    plain = backtest(px, sc, top_n=2, cost_per_side=0.0)
+    band = backtest(px, sc, top_n=2, cost_per_side=0.0, keep_rank=3)
+    assert plain["holdings"][idx[1]] == ["B", "C"]
+    assert set(band["holdings"][idx[1]]) == {"A", "B"}  # A ranks 3rd: kept
+    assert band["turnover"].iloc[1] == 0  # nothing traded, A not trimmed back to half
+    assert np.isclose(band["turnover"].iloc[0], 1.0)
+
+
+def test_delivery_costs_charge_sells_and_a_fixed_fee_per_stock_sold():
+    import numpy as np
+    import pandas as pd
+
+    from mo.momentum import backtest
+
+    idx = pd.date_range("2020-01-31", periods=3, freq="ME")
+    px = pd.DataFrame({"A": [1, 1, 1], "B": [1, 1, 1]}, index=idx, dtype=float)
+    sc = pd.DataFrame({"A": [2, 1, 1], "B": [1, 2, 2]}, index=idx, dtype=float)
+    bt = backtest(px, sc, top_n=1, costs=(0.01, 0.02, 100.0, 10_000.0))
+    assert np.isclose(bt["cost"].iloc[0], 0.01)  # buy A from cash
+    assert np.isclose(bt["cost"].iloc[1], 0.01 + 0.02 + 100 / (10_000 * (1 - 0.01)))

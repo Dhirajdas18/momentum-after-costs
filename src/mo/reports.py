@@ -492,8 +492,148 @@ def report_portfolio(out_dir: Path) -> dict:
     return res
 
 
+def report_costs(out_dir: Path) -> dict:
+    """Delivery costs and turnover for the top-20 NSE-style score portfolio on the point-in-time
+    universe (needs MO_LAKE_DIR): Zerodha charges, rebalance frequency with every possible start
+    month, hold bands, portfolio size (the per-sale DP charge) and slippage. No dividends."""
+    from mo.momentum import backtest, cagr, delivery_costs, month_end_prices
+    from mo.signals import score_frame, signal_panel
+    from mo.universe import load_lake, load_universe
+
+    res = {}
+    px, _ = load_lake()
+    monthly = month_end_prices(px)
+    sc = score_frame(signal_panel(px, universe=load_universe()), "NSE-style volatility-adjusted")
+
+    def run(**kw):
+        b = backtest(monthly, sc, top_n=20, **kw)
+        e = b["equity"]
+        yrs = (e.index[-1] - e.index[0]).days / 365.25
+        return {
+            "gross": cagr(e["gross"]),
+            "net": cagr(e["net"]),
+            "cost": float(b["cost"].sum() / yrs),
+            "turnover": float(b["turnover"].iloc[1:].sum() / yrs),
+        }
+
+    base = run(costs=delivery_costs())
+    res["charges"] = (
+        "Zerodha delivery, Nov 2026: STT 0.1% each side, stamp 0.015% on buys, NSE 0.00322% "
+        "and SEBI 0.0001% each side with 18% GST, ₹16 DP charge per stock sold, 5 bp slippage "
+        "a side; ₹10 lakh"
+    )
+    res["monthly, full rebalance"] = (
+        f"gross {100 * base['gross']:.1f}%, net {100 * base['net']:.1f}% a year; costs "
+        f"{100 * base['cost']:.2f}% a year; traded {base['turnover']:.1f}x the portfolio a year"
+    )
+    bands = {}
+    for kr in (30, 40, 60):
+        bands[kr] = run(keep_rank=kr, costs=delivery_costs())
+        b = bands[kr]
+        res[f"monthly, hold band {kr}"] = (
+            f"gross {100 * b['gross']:.1f}%, net {100 * b['net']:.1f}%; costs "
+            f"{100 * b['cost']:.2f}% a year; traded {b['turnover']:.1f}x"
+        )
+
+    # every rebalance frequency from every start month, scored on 2016 onward
+    timing = {}
+    for every in (1, 3, 6, 12):
+        for kr in (None, 40):
+            vals = []
+            for off in range(every):
+                s2 = sc.copy()
+                first = s2.index[s2.index >= pd.Timestamp("2015-01-01")][off]
+                s2.loc[: first - pd.Timedelta(days=1)] = np.nan
+                e = backtest(
+                    monthly,
+                    s2,
+                    top_n=20,
+                    rebalance_every=every,
+                    keep_rank=kr,
+                    costs=delivery_costs(),
+                )["equity"]["net"]
+                e = e.loc["2016-01-01":]
+                vals.append(cagr(e / e.iloc[0]))
+            timing[(every, kr)] = vals
+            res[f"every {every} months, {'band 40' if kr else 'full rebalance'}, net 2016-26"] = (
+                f"median {100 * np.median(vals):.1f}%, range {100 * min(vals):.1f}% to "
+                f"{100 * max(vals):.1f}% over {every} start months"
+            )
+    for cap in (2e5, 1e7):
+        a, b = (
+            run(costs=delivery_costs(capital=cap)),
+            run(keep_rank=40, costs=delivery_costs(capital=cap)),
+        )
+        res[f"₹{cap / 1e5:,.0f} lakh"] = (
+            f"costs {100 * a['cost']:.2f}% a year full rebalance, "
+            f"{100 * b['cost']:.2f}% with band 40"
+        )
+    slips = {}
+    for sl in (0.0002, 0.001, 0.002):
+        slips[sl] = (
+            run(costs=delivery_costs(slippage=sl)),
+            run(keep_rank=40, costs=delivery_costs(slippage=sl)),
+        )
+        res[f"slippage {sl * 1e4:.0f} bp"] = (
+            f"net {100 * slips[sl][0]['net']:.1f}% full rebalance, "
+            f"{100 * slips[sl][1]['net']:.1f}% band 40"
+        )
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.2), gridspec_kw={"width_ratios": [1.15, 1]})
+    names = ["full rebalance", "band 30", "band 40", "band 60"]
+    rows = [base, bands[30], bands[40], bands[60]]
+    xs = np.arange(len(names))
+    axes[0].bar(
+        xs - 0.2, [100 * r["gross"] for r in rows], 0.38, color=plots.MUTED, label="before costs"
+    )
+    axes[0].bar(
+        xs + 0.2, [100 * r["net"] for r in rows], 0.38, color=plots.SERIES[0], label="after costs"
+    )
+    for i, r in enumerate(rows):
+        axes[0].text(
+            i,
+            100 * r["gross"] + 0.6,
+            f"costs {100 * r['cost']:.1f}%/yr\n{r['turnover']:.1f}x traded",
+            ha="center",
+            fontsize=8,
+            color=plots.TEXT,
+        )
+    axes[0].set_xticks(xs, names)
+    axes[0].set_ylim(0, 42)
+    axes[0].set_ylabel("% a year, 2014-2026")
+    axes[0].legend(fontsize=8, loc="upper right", ncol=2)
+    axes[0].set_title("Monthly, 20 stocks, ₹10 lakh", fontsize=10, fontweight="normal", loc="left")
+    for j, (kr, c, lab) in enumerate(
+        ((None, plots.MUTED, "full rebalance"), (40, plots.SERIES[0], "band 40"))
+    ):
+        for i, every in enumerate((1, 3, 6, 12)):
+            v = 100 * np.array(timing[(every, kr)])
+            x = i + (j - 0.5) * 0.3
+            axes[1].plot([x, x], [v.min(), v.max()], color=c, lw=2)
+            axes[1].plot([x], [np.median(v)], "o", color=c, ms=6, label=lab if i == 0 else None)
+    axes[1].set_xticks(range(4), ["monthly", "3 months", "6 months", "12 months"])
+    axes[1].set_ylabel("% a year after costs, 2016-2026")
+    axes[1].legend(fontsize=8, loc="lower left")
+    axes[1].set_title(
+        "Rebalance every… (dot: median start month; line: range)",
+        fontsize=10,
+        fontweight="normal",
+        loc="left",
+    )
+    fig.suptitle(
+        "Costs took 1.5 points a year; a hold band halved them; slower rebalancing cost "
+        "more than it saved",
+        x=0.02,
+        ha="left",
+    )
+    fig.tight_layout()
+    plots.save(fig, out_dir, "costs_turnover")
+    return res
+
+
 REPORTS: dict[str, Callable[[Path], dict]] = {
     "signal": report_signal,
     "universe": report_universe,
     "portfolio": report_portfolio,
+    "costs": report_costs,
 }

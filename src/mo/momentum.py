@@ -94,12 +94,18 @@ def _backtest_arrays(
     group: np.ndarray | None = None,
     max_per_group: int | None = None,
     max_weight: float | None = None,
+    keep_rank: int | None = None,
+    costs: tuple[float, float, float, float] | None = None,
 ) -> dict:
     """Array core of `backtest` (rows are months, columns stocks; NaN for missing). Optional:
     `tilt` (same shape) sets target weights in proportion to its value for the picked stocks
     (missing or non-positive -> equal weight for that month); `group` (one label per column) with
     `max_per_group` skips a stock once its group already has that many picks; `max_weight` caps
-    any one weight."""
+    any one weight. `keep_rank` (hold band): a held stock stays, untouched, while its rank is within
+    `keep_rank`; only the stocks that fall out are sold and the freed money is split equally among
+    the best-ranked stocks not held, so winners are not trimmed. `costs` = (buy rate, sell rate, ₹
+    per stock sold, starting capital in ₹): replaces `cost` with buys and sells charged separately
+    and a fixed charge for every stock sold (against the capital grown at the net return)."""
     t_len, n = px.shape
     valid = ~np.isnan(sc) & ~np.isnan(px)
     starts = [i for i in range(t_len - 1) if valid[i].any()]
@@ -108,7 +114,7 @@ def _backtest_arrays(
     i0 = starts[0]
     rebal = set(range(i0, t_len - 1, every))
     w = np.zeros(n)
-    gross, net, turn, costs, picks, rebal_rows = [], [], [], [], [], []
+    gross, net, turn, cost_log, picks, rebal_rows = [], [], [], [], [], []
     eq_g, eq_n = [1.0], [1.0]
     pending = 0.0  # cost of the last rebalance, charged to the month that follows it
     for i in range(i0, t_len):
@@ -141,7 +147,20 @@ def _backtest_arrays(
                         break
                 pick = np.array(chosen, dtype=int)
             target = np.zeros(n)
-            if len(pick):
+            held = np.flatnonzero(w > 0)
+            if keep_rank is not None and len(held):
+                rank = {j: r for r, j in enumerate(order)}
+                keep = [j for j in held if rank.get(j, 10**9) < keep_rank]
+                keep = sorted(keep, key=lambda j: rank[j])[:top_n]
+                new = [j for j in order if j not in set(keep)][: top_n - len(keep)]
+                target[keep] = w[keep]
+                free = 1.0 - float(w[keep].sum())
+                if new:
+                    target[new] = free / len(new)
+                elif keep:
+                    target[keep] = w[keep] / w[keep].sum()
+                pick = np.array(keep + new, dtype=int)
+            elif len(pick):
                 target[pick] = 1.0 / len(pick)
                 if tilt is not None:
                     t = tilt[i, pick]
@@ -151,8 +170,19 @@ def _backtest_arrays(
                     target[pick] = _cap_weights(target[pick], max_weight)
             tv = float(np.abs(target - w).sum())
             turn.append(tv)
-            costs.append(cost * tv)
-            pending = cost * tv
+            if costs is None:
+                c = cost * tv
+            else:
+                buy_rate, sell_rate, per_sell, capital = costs
+                d = target - w
+                sold = int(np.sum(d < -1e-9))
+                c = (
+                    buy_rate * float(d[d > 0].sum())
+                    + sell_rate * float(-d[d < 0].sum())
+                    + sold * per_sell / (capital * eq_n[-1])
+                )
+            cost_log.append(c)
+            pending = c
             picks.append(pick.tolist())
             rebal_rows.append(i)
             w = target
@@ -163,7 +193,7 @@ def _backtest_arrays(
         "equity_gross": np.array(eq_g),
         "equity_net": np.array(eq_n),
         "turnover": np.array(turn),
-        "cost": np.array(costs),
+        "cost": np.array(cost_log),
         "holdings": picks,
         "rebalances": rebal_rows,
     }
@@ -180,6 +210,8 @@ def backtest(
     group: dict | None = None,
     max_per_group: int | None = None,
     max_weight: float | None = None,
+    keep_rank: int | None = None,
+    costs: tuple[float, float, float, float] | None = None,
 ) -> dict:
     """Long-only top-N momentum portfolio, rebalanced every `rebalance_every` months.
 
@@ -221,6 +253,8 @@ def backtest(
         group=g_arr,
         max_per_group=max_per_group,
         max_weight=max_weight,
+        keep_rank=keep_rank,
+        costs=costs,
     )
     dates = monthly_prices.index
     cols = monthly_prices.columns
@@ -252,3 +286,16 @@ def annual_vol(returns: pd.Series, periods: int = 12) -> float:
 def max_drawdown(equity: pd.Series) -> float:
     """Worst fall from a running peak, as a negative fraction."""
     return float((equity / equity.cummax() - 1).min())
+
+
+# Zerodha delivery charges, November 2026 (the reference model spec §6): no brokerage; STT 0.1% each
+# side; stamp duty 0.015% on buys; NSE transaction 0.00322% and SEBI 0.0001% each side with 18% GST;
+# about ₹16 depository (DP) charge per stock per day it is sold.
+FEES_BUY = 0.001 + 0.00015 + (0.0000322 + 0.000001) * 1.18
+FEES_SELL = 0.001 + (0.0000322 + 0.000001) * 1.18
+DP_PER_SELL = 16.0
+
+
+def delivery_costs(slippage: float = 0.0005, capital: float = 1_000_000.0) -> tuple:
+    """The `costs` tuple for `backtest`: fees plus `slippage` per side, ₹16 per stock sold."""
+    return (FEES_BUY + slippage, FEES_SELL + slippage, DP_PER_SELL, capital)

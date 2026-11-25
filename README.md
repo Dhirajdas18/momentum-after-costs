@@ -18,7 +18,7 @@ data by GitHub Actions.
 - [x] The signal out of sample: 12-1, 6-1, 12-0 and 3-month returns and NSE's volatility-adjusted score
 - [x] Survivorship and liquidity: a point-in-time universe against today's list, universe size, turnover rule
 - [x] Portfolio construction: number of stocks, weights, industry caps, and the gap to the index
-- [ ] Costs and turnover: delivery charges, rebalance frequency and hold bands
+- [x] Costs and turnover: delivery charges, rebalance frequency with start-month luck, hold bands
 - [ ] Tax: short- and long-term gains and holding periods
 - [ ] Momentum crashes: a market filter and volatility scaling
 - [ ] Against the Nifty200 Momentum 30 fund and NIFTY after costs and tax
@@ -103,13 +103,35 @@ covers 83% of the stocks picked (the rest are not capped).
   −29.2% worst drawdown, against 27.1% and −33.9% uncapped.
 - **Every version traded a lot.** Monthly rebalancing turned over 6–10 times the portfolio a year
   (2.9 times when reviewed every 6 months), which finding 4 prices.
+### 4. Delivery costs took 1.5 points a year; a hold band halved them; slower rebalancing lost more
+
+<a href="docs/img/costs_turnover.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/costs_turnover.png"><img src="docs/img/costs_turnover.gif" alt="Return before and after costs for four hold bands, and net return by rebalance frequency across start months" width="720"></picture></a>
+
+The top-20 portfolio of findings 2 and 3 with Zerodha's November 2026 delivery charges: STT 0.1% on
+each side, stamp duty 0.015% on buys, NSE 0.00322% and SEBI 0.0001% each side with 18% GST, a ₹16
+depository charge for every stock sold, and 5 bp slippage a side, on ₹10 lakh. A hold band keeps a held
+stock, untouched, while it stays in the top N by score; only stocks that fall out are sold and the money
+goes equally to the best-ranked new ones, so winners are not trimmed. Slower schedules are run from every
+possible start month and scored over 2016–2026.
+
+- **Costs were small next to the edge.** Monthly with a full rebalance to equal weight: 27.1% a year
+  before costs, 25.3% after; costs 1.46% a year on trading 8.4 times the portfolio.
+- **A hold band halved them.** Keeping stocks while they stay in the top 40: costs 0.63% a year, trading
+  3.7 times, 25.4% after costs; top 30: 0.78% and 26.8%.
+- **Slower rebalancing lost more than it saved, and added luck.** Net over 2016–2026, by start month:
+  monthly 23.5% (24.1% with the band of 40) whatever the start; every 3 months median 23.0% (range
+  20.9–24.5%); every 6 months 23.0% (18.9–26.7%); every 12 months 20.5% (15.0–23.3%).
+- **Small portfolios pay more.** The ₹16 per sale is 1.80% a year on ₹2 lakh with a full rebalance
+  (0.70% with the band) against 1.38% on ₹1 crore.
+- **Slippage didn't change the answer.** At 20 bp a side instead of 5: 23.7% after costs with a full
+  rebalance, 24.7% with the band of 40.
 
 ## Quick start
 
 ```bash
 uv sync
 uv run python scripts/fetch_data.py         # Yahoo Finance -> data/prices.parquet
-MO_LAKE_DIR=... uv run mo report signal     # also: universe, portfolio; needs a local NSE archive
+MO_LAKE_DIR=... uv run mo report signal     # also: universe, portfolio, costs; needs a local NSE archive
 uv run python scripts/build_site.py         # momentum lab -> site/index.html
 uv run pytest
 ```
