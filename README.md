@@ -194,7 +194,8 @@ same with no fee. The archive has the index from August 2020. No dividends anywh
   edge leans on mid-sized companies that the index weights down (finding 3) during a strong decade for
   them. Weighting by size, as the index does, gave most of it back.
 - **The fund does what it says.** Motilal Oswal's Momentum 30 ETF made 10.73% a year from August 2022
-  against the price index's 10.55%, so the fund pays the index's dividends and its fee is small.
+  against the price index's 10.55%: it tracked closely (an ETF also collects the dividends the price
+  index leaves out, so using the price index less 0.3% slightly understates the fund).
 
 ## Quick start
 
