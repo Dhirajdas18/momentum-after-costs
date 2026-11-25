@@ -57,3 +57,23 @@ def members_at(turnover: pd.DataFrame, day: pd.Timestamp, n: int, window: int = 
     past = turnover.loc[turnover.index < day].iloc[-window:]  # known before the day starts
     med = past.median().dropna()
     return list(med.nlargest(n).index)
+
+
+def load_universe(lake_dir: str | Path | None = None) -> pd.DataFrame:
+    """The reference model's point-in-time universe (date, symbol, rank, med_turnover_cr, close): each day the
+    EQ stocks priced at ₹50 or more with a year of history, ranked by median turnover over the last
+    126 trading days, top 200 kept. Built from NSE's raw bhavcopy, so delisted stocks are in it."""
+    lake_dir = lake_dir or os.environ.get("MO_LAKE_DIR")
+    if not lake_dir:
+        raise FileNotFoundError("set MO_LAKE_DIR to a bhavcopy lake folder with universe.parquet")
+    u = pd.read_parquet(Path(lake_dir) / "universe.parquet")
+    u["date"] = pd.to_datetime(u["date"])
+    return u
+
+
+def members_on(universe: pd.DataFrame, day: pd.Timestamp, n: int = 200) -> list[str]:
+    """The universe's top `n` on the last universe date on or before `day`."""
+    dates = universe["date"]
+    last = dates[dates <= day].max()
+    u = universe[(dates == last) & (universe["rank"] <= n)]
+    return list(u.sort_values("rank")["symbol"])

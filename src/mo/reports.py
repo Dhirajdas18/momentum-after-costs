@@ -28,16 +28,17 @@ def last_years(df: pd.DataFrame, years: int) -> pd.DataFrame:
 
 
 def report_signal(out_dir: Path) -> dict:
-    """Which momentum signal ranked next month's returns best, 2014-2026, on a point-in-time
-    universe (the 200 most-traded stocks each month, delisted ones included; needs MO_LAKE_DIR),
+    """Which momentum signal ranked next month's returns best, 2014-2026, on the reference model's
+    point-in-time universe (the 200 most-traded stocks each day at ₹50 or more with a year of
+    history, delisted ones included; needs MO_LAKE_DIR),
     with today's NIFTY 200 from Yahoo alongside."""
     from mo.data import SYMBOLS
     from mo.signals import SIGNALS, evaluate, signal_panel
-    from mo.universe import load_lake
+    from mo.universe import load_lake, load_universe
 
     res = {}
-    lake_px, lake_to = load_lake()
-    panel = signal_panel(lake_px, lake_to)
+    lake_px, _ = load_lake()
+    panel = signal_panel(lake_px, universe=load_universe())
     res["point-in-time"] = (
         f"{panel['date'].nunique()} month-ends {panel['date'].min():%b %Y}-"
         f"{panel['date'].max():%b %Y}, {len(panel) / panel['date'].nunique():.0f} stocks a month"

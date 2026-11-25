@@ -1,16 +1,18 @@
 """Which momentum signal ranks next month's returns best, on a point-in-time universe.
 
-At each month-end t the universe is the `n` most-traded stocks by median daily turnover over the
-126 trading days to t (pt.universe.members_at, known at t). Every signal uses prices up to t only;
-the outcome is each stock's return from t to the next month-end. A stock with no price at the next
-month-end (delisted or suspended) counts as 0, as if sold at its last price.
+At each month-end t the universe is the reference model's point-in-time list on that day
+(mo.universe.members_on: the `n` most-traded EQ stocks priced at ₹50 or more with a year of
+history), or, given a turnover table instead, the `n` most-traded stocks over the 126 trading
+days to t (members_at). Every signal uses prices up to t only; the outcome is each stock's return
+from t to the next month-end. A stock with no price at the next month-end (delisted or
+suspended) counts as 0, as if sold at its last price.
 """
 
 import numpy as np
 import pandas as pd
 
 from mo.momentum import TRADING_DAYS, momentum, month_end_prices
-from mo.universe import members_at
+from mo.universe import members_at, members_on
 
 SIGNALS = ("12-1", "6-1", "3-0", "12-0", "NSE-style volatility-adjusted")
 
@@ -45,7 +47,11 @@ def scores_at(monthly, vol, t, members) -> dict[str, pd.Series]:
 
 
 def signal_panel(
-    prices: pd.DataFrame, turnover: pd.DataFrame, n: int = 200, start: str = "2014-01-01"
+    prices: pd.DataFrame,
+    turnover: pd.DataFrame | None = None,
+    n: int = 200,
+    start: str = "2014-01-01",
+    universe: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """One row per (month-end t, stock in that month's universe): every signal at t and the next
     month's return."""
@@ -55,11 +61,12 @@ def signal_panel(
     rows = []
     dates = monthly.index[(monthly.index >= start)][:-1]  # the last month has no next month
     for t in dates:
-        members = [
-            s
-            for s in members_at(turnover, t + pd.Timedelta(days=1), n)
-            if pd.notna(monthly.at[t, s])
-        ]
+        pool = (
+            members_on(universe, t, n)
+            if universe is not None
+            else members_at(turnover, t + pd.Timedelta(days=1), n)
+        )
+        members = [s for s in pool if s in monthly.columns and pd.notna(monthly.at[t, s])]
         sc = pd.DataFrame(scores_at(monthly, vol, t, members))
         sc["next"] = nxt.loc[t, members]
         sc["date"] = t
