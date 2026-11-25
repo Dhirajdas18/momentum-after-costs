@@ -69,9 +69,7 @@ def vol_adjusted_score(
     return pd.DataFrame(score, index=z.index, columns=z.columns).reindex(dates)
 
 
-def _backtest_arrays(
-    px: np.ndarray, sc: np.ndarray, top_n: int, every: int, cost: float
-) -> dict:
+def _backtest_arrays(px: np.ndarray, sc: np.ndarray, top_n: int, every: int, cost: float) -> dict:
     """Array core of `backtest` (rows are months, columns stocks; NaN for missing)."""
     t_len, n = px.shape
     valid = ~np.isnan(sc) & ~np.isnan(px)
@@ -155,7 +153,10 @@ def backtest(
         raise ValueError("only weights='equal' is supported")
     score = score.reindex(index=monthly_prices.index, columns=monthly_prices.columns)
     res = _backtest_arrays(
-        monthly_prices.to_numpy(float), score.to_numpy(float), top_n, rebalance_every,
+        monthly_prices.to_numpy(float),
+        score.to_numpy(float),
+        top_n,
+        rebalance_every,
         cost_per_side,
     )
     dates = monthly_prices.index
