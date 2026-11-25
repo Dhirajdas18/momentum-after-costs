@@ -96,6 +96,7 @@ def _backtest_arrays(
     max_weight: float | None = None,
     keep_rank: int | None = None,
     costs: tuple[float, float, float, float] | None = None,
+    return_targets: bool = False,
 ) -> dict:
     """Array core of `backtest` (rows are months, columns stocks; NaN for missing). Optional:
     `tilt` (same shape) sets target weights in proportion to its value for the picked stocks
@@ -114,7 +115,7 @@ def _backtest_arrays(
     i0 = starts[0]
     rebal = set(range(i0, t_len - 1, every))
     w = np.zeros(n)
-    gross, net, turn, cost_log, picks, rebal_rows = [], [], [], [], [], []
+    gross, net, turn, cost_log, picks, rebal_rows, targets = [], [], [], [], [], [], []
     eq_g, eq_n = [1.0], [1.0]
     pending = 0.0  # cost of the last rebalance, charged to the month that follows it
     for i in range(i0, t_len):
@@ -184,6 +185,7 @@ def _backtest_arrays(
             cost_log.append(c)
             pending = c
             picks.append(pick.tolist())
+            targets.append(target.copy())
             rebal_rows.append(i)
             w = target
     return {
@@ -196,6 +198,7 @@ def _backtest_arrays(
         "cost": np.array(cost_log),
         "holdings": picks,
         "rebalances": rebal_rows,
+        **({"targets": targets} if return_targets else {}),
     }
 
 

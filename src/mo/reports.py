@@ -631,9 +631,145 @@ def report_costs(out_dir: Path) -> dict:
     return res
 
 
+def report_tax(out_dir: Path) -> dict:
+    """After-tax returns of the top-20 NSE-style score portfolio on the point-in-time universe
+    (needs MO_LAKE_DIR) with delivery costs: short- and long-term gains tax paid every March,
+    rebalance schedules (slow ones from every start month), ₹10 lakh and ₹1 crore, against NIFTY
+    bought and held. Today's tax rates for every year; no dividends."""
+    from mo.momentum import delivery_costs, month_end_prices
+    from mo.signals import score_frame, signal_panel
+    from mo.tax import buy_and_hold_after_tax, simulate
+    from mo.universe import load_lake, load_universe
+
+    res = {}
+    px, _ = load_lake()
+    monthly = month_end_prices(px)
+    sc = score_frame(signal_panel(px, universe=load_universe()), "NSE-style volatility-adjusted")
+    market = pd.read_parquet(Path(os.environ["MO_LAKE_DIR"]) / "market.parquet").set_index("date")
+    nifty = month_end_prices(market[["nifty"]].dropna())["nifty"]
+
+    def run(capital, score=sc, **kw):
+        c = delivery_costs(capital=capital)
+        pre = simulate(monthly, score, capital=capital, costs=c, tax=False, **kw)["value"]
+        post = simulate(monthly, score, capital=capital, costs=c, **kw)
+        yrs = (pre.index[-1] - pre.index[0]).days / 365.25
+        gains = post["short-term gains"] + post["long-term gains"]
+        return {
+            "pre": (pre.iloc[-1] / capital) ** (1 / yrs) - 1,
+            "yearly": (post["value"].iloc[-1] / capital) ** (1 / yrs) - 1,
+            "sold": (post["after selling"] / capital) ** (1 / yrs) - 1,
+            "short share": post["short-term gains"] / gains if gains else np.nan,
+            "start": pre.index[0],
+            "end": pre.index[-1],
+        }
+
+    rules = {
+        "monthly, full rebalance": {},
+        "monthly, hold band 40": {"keep_rank": 40},
+    }
+    out = {}
+    for cap, label in ((1e6, "₹10 lakh"), (1e7, "₹1 crore")):
+        for name, kw in rules.items():
+            r = run(cap, **kw)
+            out[(label, name)] = r
+            res[f"{label}, {name}"] = (
+                f"{100 * r['pre']:.1f}% a year before tax, {100 * r['yearly']:.1f}% after tax paid "
+                f"each March, {100 * r['sold']:.1f}% after selling everything at the end; "
+                f"{100 * r['short share']:.0f}% of realised gains short-term"
+            )
+        r0 = out[(label, "monthly, full rebalance")]
+        n = nifty.loc[r0["start"] : r0["end"]]
+        yrs = (n.index[-1] - n.index[0]).days / 365.25
+        b = buy_and_hold_after_tax(n, cap)
+        out[(label, "NIFTY")] = {
+            "pre": (b["before tax"] / cap) ** (1 / yrs) - 1,
+            "sold": (b["after selling"] / cap) ** (1 / yrs) - 1,
+        }
+        res[f"{label}, NIFTY 50 bought and held"] = (
+            f"{100 * out[(label, 'NIFTY')]['pre']:.1f}% a year before tax, "
+            f"{100 * out[(label, 'NIFTY')]['sold']:.1f}% after selling at the end"
+        )
+
+    slow = {}
+    for every in (6, 12, 13):
+        vals = []
+        for off in range(every):
+            s2 = sc.copy()
+            first = s2.index[s2.index >= pd.Timestamp("2015-01-01")][off]
+            s2.loc[: first - pd.Timedelta(days=1)] = np.nan
+            r = run(1e6, score=s2, rebalance_every=every, keep_rank=40)
+            vals.append(r)
+        slow[every] = vals
+        pre = np.array([v["pre"] for v in vals])
+        sold = np.array([v["sold"] for v in vals])
+        short = np.array([v["short share"] for v in vals])
+        res[f"every {every} months, band 40, ₹10 lakh, by start month"] = (
+            f"before tax median {100 * np.median(pre):.1f}% ({100 * pre.min():.1f} to "
+            f"{100 * pre.max():.1f}), after selling median {100 * np.median(sold):.1f}% "
+            f"({100 * sold.min():.1f} to {100 * sold.max():.1f}); short-term share of gains "
+            f"median {100 * np.median(short):.0f}%"
+        )
+    s1 = sc.copy()
+    s1.loc[: pd.Timestamp("2014-12-31")] = np.nan
+    m1 = [run(1e6, score=s1, keep_rank=40)]
+    slow[1] = m1
+    res["monthly, band 40, from Jan 2015 (same span as the slow schedules)"] = (
+        f"before tax {100 * m1[0]['pre']:.1f}%, after selling {100 * m1[0]['sold']:.1f}%"
+    )
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.4), gridspec_kw={"width_ratios": [1.2, 1]})
+    names = ["monthly, full rebalance", "monthly, hold band 40", "NIFTY"]
+    labels = ["monthly,\nfull rebalance", "monthly,\nhold band 40", "NIFTY 50,\nbought and held"]
+    xs = np.arange(3)
+    for j, (key, c, lab) in enumerate(
+        (
+            ("pre", plots.MUTED, "before tax"),
+            ("sold", plots.SERIES[0], "after tax, all sold at the end"),
+        )
+    ):
+        v = [100 * out[("₹10 lakh", k)][key] for k in names]
+        axes[0].bar(xs + (j - 0.5) * 0.38, v, 0.38, color=c, label=lab)
+        for i, x in enumerate(v):
+            axes[0].text(
+                i + (j - 0.5) * 0.38,
+                x + 0.4,
+                f"{x:.1f}%",
+                ha="center",
+                fontsize=8,
+                color=plots.TEXT,
+            )
+    axes[0].set_xticks(xs, labels)
+    axes[0].set_ylim(0, 32)
+    axes[0].set_ylabel("% a year, ₹10 lakh, 2014-2026")
+    axes[0].legend(fontsize=8, loc="upper right")
+    for i, every in enumerate((1, 6, 12, 13)):
+        pre = 100 * np.array([v["pre"] for v in slow[every]])
+        sold = 100 * np.array([v["sold"] for v in slow[every]])
+        for dx, v, c in ((-0.15, pre, plots.MUTED), (0.15, sold, plots.SERIES[0])):
+            axes[1].plot([i + dx] * 2, [v.min(), v.max()], color=c, lw=2)
+            axes[1].plot([i + dx], [np.median(v)], "o", color=c, ms=6)
+    axes[1].set_xticks(range(4), ["monthly", "6 months", "12 months", "13 months"])
+    axes[1].set_ylabel("% a year from a 2015 start, by start month")
+    axes[1].set_title(
+        "Band 40, ₹10 lakh (grey before tax, blue after)",
+        fontsize=10,
+        fontweight="normal",
+        loc="left",
+    )
+    fig.suptitle(
+        "Tax took 2.8 points a year with the band, 4.4 without; holding past a year didn't pay",
+        x=0.02,
+        ha="left",
+    )
+    fig.tight_layout()
+    plots.save(fig, out_dir, "tax")
+    return res
+
+
 REPORTS: dict[str, Callable[[Path], dict]] = {
     "signal": report_signal,
     "universe": report_universe,
     "portfolio": report_portfolio,
     "costs": report_costs,
+    "tax": report_tax,
 }

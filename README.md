@@ -19,7 +19,7 @@ data by GitHub Actions.
 - [x] Survivorship and liquidity: a point-in-time universe against today's list, universe size, turnover rule
 - [x] Portfolio construction: number of stocks, weights, industry caps, and the gap to the index
 - [x] Costs and turnover: delivery charges, rebalance frequency with start-month luck, hold bands
-- [ ] Tax: short- and long-term gains and holding periods
+- [x] Tax: short- and long-term gains with lot-by-lot accounting, holding periods, buy and hold
 - [ ] Momentum crashes: a market filter and volatility scaling
 - [ ] Against the Nifty200 Momentum 30 fund and NIFTY after costs and tax
 
@@ -125,13 +125,35 @@ possible start month and scored over 2016–2026.
   (0.70% with the band) against 1.38% on ₹1 crore.
 - **Slippage didn't change the answer.** At 20 bp a side instead of 5: 23.7% after costs with a full
   rebalance, 24.7% with the band of 40.
+### 5. Tax took 2.8 points a year with a hold band and 4.4 without; waiting a year for lower tax cost more
+
+<a href="docs/img/tax.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/tax.png"><img src="docs/img/tax.gif" alt="Return before and after tax for monthly rules and NIFTY, and by rebalance frequency across start months" width="720"></picture></a>
+
+The portfolio of finding 4 (₹10 lakh, delivery charges) simulated in rupees with every purchase kept
+as its own lot, sold first in, first out. Gains on stocks held 12 months or less are short-term, taxed
+at 20%; longer, long-term at 12.5% above ₹1.25 lakh a year; plus 4% cess (FY 2026-27 rates, which Budget
+2026 left unchanged, applied to every year). Losses are set off and carried forward; each year's tax is
+paid out of the portfolio at the end of March. "After selling" also pays tax on the gains still unsold at
+the end. NIFTY 50 is bought once and taxed once, on the sale.
+
+- **Tax took more than costs.** Monthly with a full rebalance: 25.3% a year before tax, 20.9% after
+  selling everything at the end; 87% of realised gains were short-term.
+- **The hold band halved the damage.** Keeping stocks while they stay in the top 40 let winners pass a
+  year: 38% of gains short-term, 25.4% before tax, 22.6% after. NIFTY 50 bought and held made 11.8%
+  before tax, 10.9% after.
+- **Waiting for long-term rates cost more than it saved.** Rebalanced every 13 months, only 5% of gains
+  were short-term, but over every start month from 2015 it made a median 17.6% before tax and 16.2%
+  after, against 21.1% and 18.9% for monthly with the band over the same span. Every 6 and 12 months
+  sat in between (after tax, medians 17.7% and 16.1%).
+- **Size barely mattered.** On ₹1 crore the band made 22.2% after tax against 22.6% on ₹10 lakh: the
+  ₹1.25 lakh exemption is worth less to a bigger portfolio.
 
 ## Quick start
 
 ```bash
 uv sync
 uv run python scripts/fetch_data.py         # Yahoo Finance -> data/prices.parquet
-MO_LAKE_DIR=... uv run mo report signal     # also: universe, portfolio, costs; needs a local NSE archive
+MO_LAKE_DIR=... uv run mo report signal     # also: universe, portfolio, costs, tax
 uv run python scripts/build_site.py         # momentum lab -> site/index.html
 uv run pytest
 ```
@@ -145,6 +167,8 @@ NIFTY 200 file. Event studies on delisted stocks can read a local NSE bhavcopy a
 - `src/mo/universe.py`: the point-in-time universe (each day's 200 most-traded stocks at ₹50 or more
   with a year of history) from a local NSE bhavcopy archive set by `MO_LAKE_DIR`; findings that need it say so, and only their results are
   committed.
+- `src/mo/tax.py`: a rupee simulator of the same rule with first-in, first-out lots, short- and
+  long-term gains, set-off, carried losses and yearly tax; its pre-tax path matches the backtest.
 - `src/mo/signals.py`: the momentum signals and their monthly evaluation (rank IC, top 20 against the
   universe, quintiles).
 
