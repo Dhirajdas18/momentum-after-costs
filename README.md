@@ -16,7 +16,7 @@ data by GitHub Actions.
 ## Features
 
 - [x] The signal out of sample: 12-1, 6-1, 12-0 and 3-month returns and NSE's volatility-adjusted score
-- [ ] Survivorship and liquidity: a point-in-time universe against today's list
+- [x] Survivorship and liquidity: a point-in-time universe against today's list, universe size, turnover rule
 - [ ] Portfolio construction: number of stocks, weights and sector caps
 - [ ] Costs and turnover: delivery charges, rebalance frequency and hold bands
 - [ ] Tax: short- and long-term gains and holding periods
@@ -52,13 +52,39 @@ method, without its weighting and buffers).
 - **Today's list flatters everything.** Applying today's NIFTY 200 to the same months, the average stock
   made 25.5% a year against 15.4% for the stocks that were actually most traded at the time, and 12-1's
   top-20 edge rose to +13.2% (finding 2 looks at this).
+### 2. Today's list adds 9 points a year; the honest momentum edge is 12 points, but only in a wide universe
+
+<a href="docs/img/universe_survivorship.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/universe_survivorship.png"><img src="docs/img/universe_survivorship.gif" alt="Growth of 100 for the top 20 and all stocks, on the point-in-time universe and on today's NIFTY 200, with NIFTY 50, 2014-2026" width="720"></picture></a>
+
+<a href="docs/img/universe_size.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/universe_size.png"><img src="docs/img/universe_size.gif" alt="Top 20 against all stocks for universes of the 50, 100 and 200 most-traded stocks" width="560"></picture></a>
+
+The rule: each month-end, hold the 20 stocks with the highest NSE-style score in equal weight; before
+costs. Both universes use the archive's prices (no dividends, so the NIFTY lines are price indices
+too), January 2014 to November 2026: the point-in-time universe of finding 1, or today's NIFTY 200
+(194 of its 200 are in the archive) applied to every month.
+
+- **Today's list adds 9 points a year.** The top 20 made 36.4% a year on today's NIFTY 200 against
+  27.1% on the stocks that were actually most traded at the time; the average stock 23.2% against
+  15.2%. NIFTY 50 made 11.8%, NIFTY 200 12.9%.
+- **The honest edge is large.** On the point-in-time universe the top 20 beat the average stock by
+  11.9 points a year, with a worst drawdown of −33.9% against −43.4%. Over those 13 years it held 403
+  different stocks, only 166 of them in today's NIFTY 200; 39 stopped trading before the end.
+- **Only in a wide universe.** Among the 50 most-traded stocks the top 20 beat the rest by 1.5 points
+  a year, among 100 by 4.0, among 200 by 11.9: momentum's winners were mostly outside the largest names.
+- **More than the index.** Over August 2020 to November 2026, when the archive has the Nifty200
+  Momentum 30 price index, our top 30 rebalanced every 6 months made 25.9% a year against the index's
+  16.2% (monthly correlation 0.89). Our version holds stocks in equal weight from the most-traded list;
+  the index weights by score × market value within NIFTY 200. Finding 3 tests weighting.
+- **Liquidity grew.** The number of the top 200 with a median daily turnover of ₹50 crore (the reference model's
+  rule) rose from 64 in 2014 to 200 in 2026; keeping only those, the top 20 made 21.5% a year. A held
+  stock traded a median ₹82 crore a day, so ₹50 lakh a stock (a ₹10 crore book) is 0.6% of a day.
 
 ## Quick start
 
 ```bash
 uv sync
 uv run python scripts/fetch_data.py         # Yahoo Finance -> data/prices.parquet
-MO_LAKE_DIR=... uv run mo report signal     # needs a local NSE bhavcopy archive (panel.parquet)
+MO_LAKE_DIR=... uv run mo report signal     # also: universe; needs a local NSE bhavcopy archive
 uv run python scripts/build_site.py         # momentum lab -> site/index.html
 uv run pytest
 ```

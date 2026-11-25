@@ -103,3 +103,8 @@ def evaluate(panel: pd.DataFrame, signal: str, top: int = 20) -> dict:
         "top list changed a month": float(np.mean(change)),
         "series": pd.Series(excess, index=pd.DatetimeIndex(dates)),
     }
+
+
+def score_frame(panel: pd.DataFrame, signal: str) -> pd.DataFrame:
+    """A month-end x stock table of one signal, NaN outside that month's universe (for backtest)."""
+    return panel.pivot_table(index="date", columns="symbol", values=signal)
