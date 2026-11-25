@@ -58,8 +58,8 @@ def report_signal(out_dir: Path) -> dict:
             f"{e['top list changed a month']:.0%} a month"
         )
 
-    # today's NIFTY 200 applied to the past (Yahoo): every stock with a price, no turnover rule
-    yp = prices()[SYMBOLS].loc["2013-01-01":]
+    # today's NIFTY 200 applied to the past, on the archive's prices: every stock with a price
+    yp = lake_px[[c for c in SYMBOLS if c in lake_px.columns]]
     flat = pd.DataFrame(1.0, index=yp.index, columns=yp.columns).where(yp.notna())
     yahoo = signal_panel(yp, flat, n=len(SYMBOLS))
     yahoo = yahoo[yahoo["date"] <= panel["date"].max()]
@@ -189,8 +189,9 @@ def report_universe(out_dir: Path) -> dict:
 
     def ew(panel):
         r = panel.groupby("date")["next"].mean()
+        first = r.index[0]
         r.index = monthly.index[monthly.index.get_indexer(r.index) + 1]
-        return (1 + r).cumprod()
+        return pd.concat([pd.Series([1.0], index=[first]), (1 + r).cumprod()])
 
     pit = signal_panel(px, universe=uni)
     today_syms = [s for s in SYMBOLS if s in px.columns]
@@ -796,8 +797,13 @@ def report_crash(out_dir: Path) -> dict:
     ew.index = monthly.index[monthly.index.get_indexer(ew.index) + 1]
     ew = ew.reindex(r.index)
 
+    start = monthly.index[monthly.index.get_loc(r.index[0]) - 1]
+
+    def curve(x):
+        return pd.concat([pd.Series([1.0], index=[start]), (1 + x).cumprod()])
+
     def stats(x):
-        e = (1 + x).cumprod()
+        e = curve(x)
         v = annual_vol(x)
         return {
             "cagr": cagr(e),
@@ -821,9 +827,9 @@ def report_crash(out_dir: Path) -> dict:
             f"{100 * v['cagr']:.1f}% a year, volatility {100 * v['vol']:.1f}%, worst drawdown "
             f"{100 * v['dd']:.1f}%, Sharpe {v['sharpe']:.2f}{extra}"
         )
-    res["period"] = f"{r.index[0]:%b %Y} to {r.index[-1]:%b %Y}"
+    res["period"] = f"{start:%b %Y} to {r.index[-1]:%b %Y}"
     for name, x in (("momentum", r), ("NIFTY 50", nr)):
-        d = drawdowns((1 + x).cumprod(), 4)
+        d = drawdowns(curve(x), 4)
         res[f"deepest drawdowns, {name}"] = "; ".join(
             f"{row.peak:%b %Y}-{row.trough:%b %Y} {100 * row.depth:.1f}%" for row in d.itertuples()
         )
@@ -848,7 +854,7 @@ def report_crash(out_dir: Path) -> dict:
         ("trend filter, 10 months", plots.SERIES[2], "-"),
         ("NIFTY 50", plots.SERIES[1], "-"),
     ):
-        e = 100 * (1 + series[k]).cumprod()
+        e = 100 * curve(series[k])
         ax.plot(e.index, e, color=c, lw=1.6, ls=ls)
         plots.label_line_end(ax, e.index[-1], e.iloc[-1], f"{k} {100 * st[k]['cagr']:.1f}%", c)
     out_months = exposure[10][exposure[10] == 0].index

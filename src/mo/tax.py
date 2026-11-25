@@ -9,7 +9,8 @@ Set-off (simplified): within a financial year (April to March) short-term losses
 gains, then long-term gains; long-term losses reduce only long-term gains; what is left carries
 forward (without the 8-year limit). Tax for a year is paid out of the portfolio at the end of
 March by shrinking every holding in proportion, without realising gains on that sale (which
-slightly understates tax). Lots are sold first-in, first-out.
+slightly understates tax). Lots are sold first-in, first-out; long-term means sold more than 12
+calendar months after buying.
 
 The simulator holds shares and rupees, so its pre-tax path must match mo.momentum.backtest with the
 same rule (tested).
@@ -45,7 +46,7 @@ class Ledger:
             d, q, c = lots[0]
             take = min(q, shares)
             gain = take * (price - c)
-            if (date - d).days > 365:
+            if date > d + pd.DateOffset(months=12):  # held more than 12 months
                 self.lt += gain
                 self.lt_total += gain
             else:
@@ -62,12 +63,14 @@ class Ledger:
         st -= self.carry_st
         lt -= self.carry_lt
         self.carry_st = self.carry_lt = 0.0
-        if st < 0:  # short-term loss can reduce long-term gains
+        if st < 0 and lt < 0:  # both losses: each carried as its own kind
+            self.carry_st, self.carry_lt, st, lt = -st, -lt, 0.0, 0.0
+        elif st < 0:  # a short-term loss can reduce long-term gains
             lt += st
             st = 0.0
             if lt < 0:
                 self.carry_st, lt = -lt, 0.0
-        if lt < 0:
+        elif lt < 0:  # a long-term loss reduces only long-term gains
             self.carry_lt, lt = -lt, 0.0
         tax = (STCG * st + LTCG * max(lt - LTCG_EXEMPT, 0.0)) * (1 + CESS)
         self.st = self.lt = 0.0

@@ -49,3 +49,16 @@ def test_buy_and_hold_pays_once_at_the_end():
     )
     r = buy_and_hold_after_tax(p, 1_000_000)
     assert np.isclose(r["after selling"], 2_000_000 - 0.125 * 875_000 * 1.04)
+
+
+def test_both_losses_carry_as_their_own_kind_and_twelve_months_is_short_term():
+    led = Ledger()
+    led.buy("A", pd.Timestamp("2020-01-31"), 10, 100.0)
+    led.buy("B", pd.Timestamp("2019-01-31"), 10, 100.0)
+    led.sell("A", pd.Timestamp("2020-02-29"), 10, 90.0)  # short-term loss 100
+    led.sell("B", pd.Timestamp("2020-03-31"), 10, 80.0)  # long-term loss 200
+    assert led.year_end_tax() == 0 and (led.carry_st, led.carry_lt) == (100, 200)
+    led2 = Ledger()
+    led2.buy("C", pd.Timestamp("2023-02-28"), 1, 100.0)
+    led2.sell("C", pd.Timestamp("2024-02-28"), 1, 200.0)  # exactly 12 months (leap year): short
+    assert led2.st == 100 and led2.lt == 0

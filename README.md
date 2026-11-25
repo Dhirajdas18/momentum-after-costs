@@ -3,10 +3,12 @@
 [![CI](https://github.com/Dhirajdas18/momentum-after-costs/actions/workflows/ci.yml/badge.svg)](https://github.com/Dhirajdas18/momentum-after-costs/actions/workflows/ci.yml)
 [![Dashboard](https://github.com/Dhirajdas18/momentum-after-costs/actions/workflows/pages.yml/badge.svg)](https://dhirajdas18.github.io/momentum-after-costs/)
 
-Long-only momentum stock selection on NSE: buy the NIFTY 200 stocks that rose most, pay real
-delivery charges every time the list changes, and compare what is left with NIFTY and with the
-Nifty200 Momentum 30 index and its funds. Daily data from 2007; every score uses only prices known
-at the time it is used.
+Long-only momentum stock selection on NSE: each month, buy the stocks that rose most among the 200
+most traded at the time (delisted ones included), pay real delivery charges and capital gains tax,
+and compare what is left with NIFTY and a Nifty200 Momentum 30 fund. The findings use a local NSE
+bhavcopy archive from 2013; every score uses only prices known when it is used, but the rule's design
+(signal, size, hold band) was chosen by comparing choices over the same 2014–2026 years it is scored
+on.
 
 **Live momentum lab: [dhirajdas18.github.io/momentum-after-costs](https://dhirajdas18.github.io/momentum-after-costs/)**,
 pick a lookback, number of stocks, rebalance frequency and cost per side and see growth of ₹1 lakh
@@ -15,7 +17,7 @@ data by GitHub Actions.
 
 ## Features
 
-- [x] The signal out of sample: 12-1, 6-1, 12-0 and 3-month returns and NSE's volatility-adjusted score
+- [x] The signal over 2014–2026: 12-1, 6-1, 12-0 and 3-month returns and NSE's volatility-adjusted score
 - [x] Survivorship and liquidity: a point-in-time universe against today's list, universe size, turnover rule
 - [x] Portfolio construction: number of stocks, weights, industry caps, and the gap to the index
 - [x] Costs and turnover: delivery charges, rebalance frequency with start-month luck, hold bands
@@ -25,7 +27,7 @@ data by GitHub Actions.
 
 ## Findings
 
-### 1. Twelve-month momentum works best volatility-adjusted; three months doesn't
+### 1. Six-to-twelve-month momentum works, the NSE-style score with the largest top-20 edge; three months doesn't
 
 <a href="docs/img/signal_compare.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/signal_compare.png"><img src="docs/img/signal_compare.gif" alt="Top 20 minus universe return by signal, and next-month return by quintile for three signals" width="720"></picture></a>
 
@@ -49,9 +51,9 @@ method, without its weighting and buffers).
   about the same rank correlation; the textbook one-month reversal didn't show in these stocks.
 - **Stronger lately.** The score's edge was +7.8% a year in 2014–19 and +13.1% in 2020–26; 12-1's was
   +4.7% and +9.9%.
-- **Today's list flatters everything.** Applying today's NIFTY 200 to the same months, the average stock
-  made 25.5% a year against 15.4% for the stocks that were actually most traded at the time, and 12-1's
-  top-20 edge rose to +13.2% (finding 2 looks at this).
+- **Today's list flatters everything.** Applying today's NIFTY 200 to the same months (same archive
+  prices), the average stock made 23.3% a year against 15.4% for the stocks that were actually most
+  traded at the time, and 12-1's top-20 edge rose to +11.9% (finding 2 looks at this).
 ### 2. Today's list adds 9 points a year; the honest momentum edge is 12 points, but only in a wide universe
 
 <a href="docs/img/universe_survivorship.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/universe_survivorship.png"><img src="docs/img/universe_survivorship.gif" alt="Growth of 100 for the top 20 and all stocks, on the point-in-time universe and on today's NIFTY 200, with NIFTY 50, 2014-2026" width="720"></picture></a>
@@ -64,13 +66,13 @@ too), January 2014 to November 2026: the point-in-time universe of finding 1, or
 (194 of its 200 are in the archive) applied to every month.
 
 - **Today's list adds 9 points a year.** The top 20 made 36.4% a year on today's NIFTY 200 against
-  27.1% on the stocks that were actually most traded at the time; the average stock 23.2% against
-  15.2%. NIFTY 50 made 11.8%, NIFTY 200 12.9%.
+  27.1% on the stocks that were actually most traded at the time; the average stock 23.3% against
+  15.4%. NIFTY 50 made 11.8%, NIFTY 200 12.9%.
 - **The honest edge is large.** On the point-in-time universe the top 20 beat the average stock by
-  11.9 points a year, with a worst drawdown of −33.9% against −43.4%. Over those 13 years it held 403
+  11.7 points a year, with a worst drawdown of −33.9% against −43.4%. Over those 13 years it held 403
   different stocks, only 166 of them in today's NIFTY 200; 39 stopped trading before the end.
 - **Only in a wide universe.** Among the 50 most-traded stocks the top 20 beat the rest by 1.5 points
-  a year, among 100 by 4.0, among 200 by 11.9: momentum's winners were mostly outside the largest names.
+  a year, among 100 by 3.8, among 200 by 11.7.
 - **More than the index.** Over August 2020 to November 2026, when the archive has the Nifty200
   Momentum 30 price index, our top 30 rebalanced every 6 months made 25.9% a year against the index's
   16.2% (monthly correlation 0.89). Our version holds stocks in equal weight from the most-traded list;
@@ -97,8 +99,8 @@ covers 83% of the stocks picked (the rest are not capped).
   equal (28.1%), and inverse volatility a little worse (24.1%).
 - **That explains part of the gap to the index.** Over August 2020 to November 2026, equal-weight 30
   stocks made 32.8% a year; score × size 24.3%; with a 5% cap and 6-monthly reviews, closer to the
-  index's rules, 25.6%; the index made 16.2%. The rest is likely the universe (most traded against the
-  largest by free-float market value) and NSE's buffers.
+  index's rules, 25.6%; the index made 16.2%. The rest isn't explained here; the universes differ
+  (most traded against largest by free-float market value), and NSE reviews with buffers.
 - **Industry caps cut drawdowns, not return.** At most 3 of 20 from one industry: 27.0% a year with a
   −29.2% worst drawdown, against 27.1% and −33.9% uncapped.
 - **Every version traded a lot.** Monthly rebalancing turned over 6–10 times the portfolio a year
@@ -107,12 +109,13 @@ covers 83% of the stocks picked (the rest are not capped).
 
 <a href="docs/img/costs_turnover.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/costs_turnover.png"><img src="docs/img/costs_turnover.gif" alt="Return before and after costs for four hold bands, and net return by rebalance frequency across start months" width="720"></picture></a>
 
-The top-20 portfolio of findings 2 and 3 with Zerodha's November 2026 delivery charges: STT 0.1% on
-each side, stamp duty 0.015% on buys, NSE 0.00322% and SEBI 0.0001% each side with 18% GST, a ₹16
-depository charge for every stock sold, and 5 bp slippage a side, on ₹10 lakh. A hold band keeps a held
-stock, untouched, while it stays in the top N by score; only stocks that fall out are sold and the money
-goes equally to the best-ranked new ones, so winners are not trimmed. Slower schedules are run from every
-possible start month and scored over 2016–2026.
+The top-20 portfolio of findings 2 and 3 with Zerodha's delivery charges (as in the reference model's cost model;
+slightly above the November 2026 rate card): STT 0.1% on each side, stamp duty 0.015% on buys, NSE
+0.00322% and SEBI 0.0001% each side with 18% GST, a ₹16 depository charge for every stock sold, and 5
+bp slippage a side, on ₹10 lakh. A hold band keeps a held stock, untouched, while it stays in the top N
+by score; only stocks that fall out are sold and the money goes equally to the best-ranked new ones, so
+winners are not trimmed. Slower schedules are run from every possible start month and scored over
+2016–2026.
 
 - **Costs were small next to the edge.** Monthly with a full rebalance to equal weight: 27.1% a year
   before costs, 25.3% after; costs 1.46% a year on trading 8.4 times the portfolio.
@@ -143,11 +146,11 @@ the end. NIFTY 50 is bought once and taxed once, on the sale.
   before tax, 10.9% after.
 - **Waiting for long-term rates cost more than it saved.** Rebalanced every 13 months, only 5% of gains
   were short-term, but over every start month from 2015 it made a median 17.6% before tax and 16.2%
-  after, against 21.1% and 18.9% for monthly with the band over the same span. Every 6 and 12 months
-  sat in between (after tax, medians 17.7% and 16.1%).
+  after, against 21.1% and 18.9% for monthly with the band over the same span. Every 6 months: 17.7%
+  after tax (median); every 12 months: 16.0%.
 - **Size barely mattered.** On ₹1 crore the band made 22.2% after tax against 22.6% on ₹10 lakh: the
   ₹1.25 lakh exemption is worth less to a bigger portfolio.
-### 6. No classic momentum crash here; its bad spells were mid-cap sell-offs, and stepping aside didn't reliably help
+### 6. No rebound crash here; its worst months came when NIFTY held up, and stepping aside didn't reliably help
 
 <a href="docs/img/crash_paths.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/crash_paths.png"><img src="docs/img/crash_paths.gif" alt="Growth of 100 for the momentum portfolio, the 10-month NIFTY trend filter and NIFTY 50, with the filter's months in cash shaded" width="720"></picture></a>
 
@@ -161,14 +164,15 @@ Moving in and out costs about 0.17% a side; the tax on those extra sales is left
 starts in 2013, so 2008 and its rebound are not in it.
 
 - **No rebound crash.** The textbook momentum crash comes when a falling market turns up sharply. Here,
-  in the 26 months NIFTY rose more than 5%, momentum matched the average stock (+0.04% a month); in
-  months below NIFTY's 10-month average its edge was larger (+10.4% a year against +8.6%).
-- **Its bad spells were mid-cap sell-offs.** Worst months: March 2020 −22.5% (NIFTY −23.2%), January 2025
+  in the 26 months NIFTY rose more than 5% (whatever came before), momentum matched the average stock
+  (+0.04% a month); in months below NIFTY's 10-month average its edge was larger (+10.4% a year against
+  +8.6%).
+- **Its bad spells didn't follow NIFTY.** Worst months: March 2020 −22.5% (NIFTY −23.2%), January 2025
   −15.1% (NIFTY −0.6%), September 2018 −14.9% (NIFTY −6.4%). Its deepest drawdowns, −31.5% to March 2020
   and −29.6% from July 2024 to February 2025, were deeper than NIFTY's in the second case (−14.3%).
-- **Stepping aside lowered return and mostly lowered the Sharpe.** Momentum alone made 24.8% a year with
-  a Sharpe of 0.81 (NIFTY 0.37). A 10-month filter made 19.1% (Sharpe 0.75), 12 months 20.1% (0.72);
-  only 6 months raised it (21.6%, Sharpe 0.90, worst drawdown −24.3%). Volatility targets of 15–25% gave
+- **Stepping aside lowered return and mostly lowered the Sharpe.** Momentum alone made 25.4% a year with
+  a Sharpe of 0.81 (NIFTY 11.8%, 0.37). A 10-month filter made 19.7% (Sharpe 0.75), 12 months 20.8%
+  (0.72); only 6 months raised it (22.2%, Sharpe 0.90, worst drawdown −24.3%). Volatility targets of 15–25% gave
   Sharpes of 0.64–0.76.
 - **One good setting among six is not a rule.** The 6-month filter's gain sits next to two filter
   lengths that lost, and every filter adds taxable sales; none is a reliable improvement on these years.
@@ -176,8 +180,8 @@ starts in 2013, so 2008 and its rebound are not in it.
 
 <a href="docs/img/verdict.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/verdict.png"><img src="docs/img/verdict.gif" alt="Growth since August 2020 and returns before and after tax for DIY momentum, a Nifty200 Momentum 30 fund and NIFTY 50" width="720"></picture></a>
 
-₹10 lakh in the rule built in findings 1–5: each month the 20 most-traded stocks' best NSE-style
-scores, equal weight, a hold band of 40, Zerodha delivery charges, and short- and long-term gains tax
+₹10 lakh in the rule built in findings 1–5: each month the 20 best NSE-style scores among the 200
+most-traded stocks, equal weight, a hold band of 40, Zerodha delivery charges, and short- and long-term gains tax
 paid each March, with everything sold at the end. The fund is the Nifty200 Momentum 30 price index less a
 0.3% yearly fee (fund factsheets show 0.24–0.32%), bought once and taxed once on the sale; NIFTY 50 the
 same with no fee. The archive has the index from August 2020. No dividends anywhere.
@@ -208,15 +212,16 @@ uv run python scripts/build_site.py         # momentum lab -> site/index.html
 uv run pytest
 ```
 
-`scripts/fetch_constituents.py` refreshes the stock list (`docs/data/nifty200.csv`) from NSE's
-NIFTY 200 file. Event studies on delisted stocks can read a local NSE bhavcopy archive
-(`MO_LAKE_DIR`, with `panel.parquet`); it is optional and not committed.
+Every `mo report` needs a local NSE bhavcopy archive (`MO_LAKE_DIR` with `panel.parquet`,
+`universe.parquet` and `market.parquet`); it is not committed. The lab and the tests run on Yahoo
+data alone. `scripts/fetch_constituents.py` refreshes the lab's stock list (`docs/data/nifty200.csv`)
+from NSE's NIFTY 200 file.
 
 ## Design
 
 - `src/mo/universe.py`: the point-in-time universe (each day's 200 most-traded stocks at ₹50 or more
-  with a year of history) from a local NSE bhavcopy archive set by `MO_LAKE_DIR`; findings that need it say so, and only their results are
-  committed.
+  with a year of history) from a local NSE bhavcopy archive set by `MO_LAKE_DIR`; every finding uses
+  it, and only results are committed.
 - `src/mo/tax.py`: a rupee simulator of the same rule with first-in, first-out lots, short- and
   long-term gains, set-off, carried losses and yearly tax; its pre-tax path matches the backtest.
 - `src/mo/crash.py`: the trend filter, volatility scaling and drawdown table, each deciding at one
@@ -233,15 +238,20 @@ NIFTY 200 file. Event studies on delisted stocks can read a local NSE bhavcopy a
 - `src/mo/momentum.py`: month-end prices, lookback/skip momentum, a Nifty200 Momentum 30 style
   volatility-adjusted score (an approximation of NSE's methodology), and a long-only top-N
   backtest with equal weights, drifting weights between rebalances and costs on traded value.
-- `src/mo/momentum.js`: a line-for-line browser copy of `momentum.py` (without the
-  volatility-adjusted score, which needs daily prices), tested against Python through Node.
+- `src/mo/momentum.js`: the lab's browser copy of `momentum.py`'s default path (momentum scores,
+  the equal-weight backtest with a flat cost per side, CAGR, volatility, drawdown), tested against
+  Python through Node; hold bands, tilts, caps and separate buy and sell charges are Python only.
 - `src/mo/site.py`: the momentum lab, one static Plotly page; no server, no committed price data.
 - `src/mo/reports.py`: README findings, reproducible with `mo report <topic>`.
 - Conventions: decisions at month-end t use prices up to t only and trade at t's close; a held
-  stock without a price for a month earns 0 that month; costs are a rate per side on the value
-  bought and sold; CAGR is by calendar time.
-- Survivorship: the universe is today's NIFTY 200, so stocks that left the index or were delisted
-  are missing, which flatters momentum.
+  stock without a price for a month earns 0 that month; costs in the findings are separate buy and
+  sell rates plus ₹16 per stock sold (the lab uses one flat rate per side); CAGR is by calendar time.
+  Prices have no dividends, for the portfolio and for NIFTY and the Momentum 30 index alike (both are
+  price indices); with dividends every return would be higher, NIFTY's likely by more than the
+  momentum portfolio's (not measured here).
+- Survivorship: the findings use the point-in-time universe, delisted stocks included. The lab uses
+  today's NIFTY 200 from Yahoo, so its results are survivorship-biased (finding 2: about 9 points a
+  year for the top 20).
 - Charts: one validated palette; README charts are animated GIFs with a static fallback for
   reduced-motion users.
 

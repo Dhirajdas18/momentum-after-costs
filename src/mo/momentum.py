@@ -149,6 +149,10 @@ def _backtest_arrays(
                 pick = np.array(chosen, dtype=int)
             target = np.zeros(n)
             held = np.flatnonzero(w > 0)
+            if keep_rank is not None and (
+                tilt is not None or group is not None or max_weight is not None
+            ):
+                raise ValueError("keep_rank can't be combined with tilt, group or max_weight")
             if keep_rank is not None and len(held):
                 rank = {j: r for r, j in enumerate(order)}
                 keep = [j for j in held if rank.get(j, 10**9) < keep_rank]
@@ -291,7 +295,8 @@ def max_drawdown(equity: pd.Series) -> float:
     return float((equity / equity.cummax() - 1).min())
 
 
-# Zerodha delivery charges, November 2026 (the reference model spec §6): no brokerage; STT 0.1% each
+# Zerodha delivery charges as in the reference model spec §6 (slightly conservative: Zerodha's page in
+# Nov 2026 lists NSE 0.00307% and DP ₹15.34 including GST): no brokerage; STT 0.1% each
 # side; stamp duty 0.015% on buys; NSE transaction 0.00322% and SEBI 0.0001% each side with 18% GST;
 # about ₹16 depository (DP) charge per stock per day it is sold.
 FEES_BUY = 0.001 + 0.00015 + (0.0000322 + 0.000001) * 1.18
