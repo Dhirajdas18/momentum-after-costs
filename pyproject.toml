@@ -1,0 +1,41 @@
+[project]
+name = "momentum-after-costs"
+version = "0.1.0"
+description = "Long-only momentum stock selection on NSE after real delivery costs, compared with NIFTY and the Nifty200 Momentum 30 index, with a live momentum lab."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Dhirajdas18" }]
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.5",
+    "pandas>=3.1.1",
+    "pillow>=13.0.0",
+    "pyarrow>=26.0.1",
+    "yfinance>=1.8.0",
+]
+
+[project.scripts]
+mo = "mo.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "mo"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
