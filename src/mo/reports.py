@@ -914,6 +914,131 @@ def report_crash(out_dir: Path) -> dict:
     return res
 
 
+def report_verdict(out_dir: Path) -> dict:
+    """The verdict on ₹10 lakh (needs MO_LAKE_DIR): DIY momentum (20 stocks, monthly, hold band 40,
+    delivery costs, tax) against a Nifty200 Momentum 30 fund (the index less a 0.3% fee) and NIFTY
+    bought and held, from August 2020 when the archive has the index; DIY against NIFTY from 2014;
+    a luck test; next-day execution; the fund's tracking. No dividends anywhere."""
+    from mo.data import DATA_PATH
+    from mo.luck import luck_probability
+    from mo.momentum import backtest, cagr, delivery_costs, month_end_prices
+    from mo.signals import score_frame, signal_panel
+    from mo.tax import buy_and_hold_after_tax, simulate
+    from mo.universe import load_lake, load_universe
+
+    res = {}
+    cap, fee = 1e6, 0.003
+    px, _ = load_lake()
+    monthly = month_end_prices(px)
+    sc = score_frame(signal_panel(px, universe=load_universe()), "NSE-style volatility-adjusted")
+    market = pd.read_parquet(Path(os.environ["MO_LAKE_DIR"]) / "market.parquet").set_index("date")
+    nifty = month_end_prices(market[["nifty"]].dropna())["nifty"]
+    mom = month_end_prices(market[["mom30_index"]].dropna())["mom30_index"]
+    costs = delivery_costs(capital=cap)
+
+    def diy(score):
+        pre = simulate(monthly, score, capital=cap, keep_rank=40, costs=costs, tax=False)["value"]
+        post = simulate(monthly, score, capital=cap, keep_rank=40, costs=costs)
+        return pre, post
+
+    def ann(end_value, start, end):
+        return (end_value / cap) ** (365.25 / (end - start).days) - 1
+
+    windows = {}
+    s2 = sc.copy()
+    s2.loc[: mom.index[0] - pd.Timedelta(days=1)] = np.nan
+    for label, score in (("2014-2026", sc), ("since Aug 2020", s2)):
+        pre, post = diy(score)
+        a, b = pre.index[0], pre.index[-1]
+        row = {"DIY momentum": (ann(pre.iloc[-1], a, b), ann(post["after selling"], a, b))}
+        n = buy_and_hold_after_tax(nifty.loc[a:b], cap)
+        row["NIFTY 50"] = (ann(n["before tax"], a, b), ann(n["after selling"], a, b))
+        if label == "since Aug 2020":
+            idx = mom.loc[a:b]
+            fund = idx * np.exp(-fee * np.arange(len(idx)) / 12)
+            f = buy_and_hold_after_tax(fund, cap)
+            row["Momentum 30 fund"] = (ann(f["before tax"], a, b), ann(f["after selling"], a, b))
+            paths = {
+                "DIY momentum": post["value"] / cap * 100,
+                "Momentum 30 fund": fund / fund.iloc[0] * 100,
+                "NIFTY 50": nifty.loc[a:b] / nifty.loc[a:b].iloc[0] * 100,
+            }
+        windows[label] = row
+        for k, (p0, p1) in row.items():
+            res[f"{label}, {k}"] = (
+                f"{100 * p0:.1f}% a year before tax, {100 * p1:.1f}% after tax with everything "
+                f"sold at the end ({a:%b %Y}-{b:%b %Y}, ₹10 lakh)"
+            )
+
+    net = backtest(monthly, sc, top_n=20, keep_rank=40, costs=delivery_costs())["net"]
+    ex_n = net - nifty.pct_change().reindex(net.index)
+    fund_m = (mom * np.exp(-fee * np.arange(len(mom)) / 12)).pct_change()
+    ex_f = (net - fund_m.reindex(net.index)).dropna()
+    res["luck, against NIFTY 50 (2014-2026, before tax)"] = (
+        f"average edge {100 * 12 * ex_n.mean():+.1f}% a year; chance of this with no real edge "
+        f"{luck_probability(ex_n):.3f} (12-month blocks, 20,000 resamples)"
+    )
+    res["luck, against the Momentum 30 fund (Aug 2020-2026, before tax)"] = (
+        f"average edge {100 * 12 * ex_f.mean():+.1f}% a year over {len(ex_f)} months; chance "
+        f"{luck_probability(ex_f):.3f}"
+    )
+    nxt = px.shift(-1).reindex(monthly.index).fillna(monthly)
+    a = backtest(monthly, sc, top_n=20, keep_rank=40, costs=delivery_costs())["equity"]["net"]
+    b = backtest(nxt, sc, top_n=20, keep_rank=40, costs=delivery_costs())["equity"]["net"]
+    res["trading the day after the signal"] = (
+        f"{100 * cagr(b):.1f}% a year against {100 * cagr(a):.1f}% at the signal's own close"
+    )
+    etf = month_end_prices(pd.read_parquet(DATA_PATH)["adj_close"][["MOMENTUM"]].dropna())
+    etf = etf["MOMENTUM"].loc[mom.index[0] :]
+    ix = mom.loc[etf.index[0] : etf.index[-1]]
+    res["Motilal Oswal Momentum 30 ETF against the index"] = (
+        f"{etf.index[0]:%b %Y}-{etf.index[-1]:%b %Y}: ETF {100 * cagr(etf / etf.iloc[0]):.2f}% a "
+        f"year, index {100 * cagr(ix / ix.iloc[0]):.2f}% (Yahoo prices against the archive's index)"
+    )
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.4), gridspec_kw={"width_ratios": [1.35, 1]})
+    for k, c in (
+        ("DIY momentum", plots.SERIES[0]),
+        ("Momentum 30 fund", plots.SERIES[2]),
+        ("NIFTY 50", plots.SERIES[1]),
+    ):
+        e = paths[k]
+        axes[0].plot(e.index, e, color=c, lw=1.7)
+        plots.label_line_end(axes[0], e.index[-1], e.iloc[-1], k, c)
+    axes[0].set_ylabel("growth of 100 (DIY after costs and yearly tax)")
+    axes[0].set_title("Since August 2020, ₹10 lakh", fontsize=10, fontweight="normal", loc="left")
+    axes[0].margins(x=0.28)
+    row = windows["since Aug 2020"]
+    names = ["DIY momentum", "Momentum 30 fund", "NIFTY 50"]
+    xs = np.arange(3)
+    for j, (idx_, c, lab) in enumerate(
+        ((0, plots.MUTED, "before tax"), (1, plots.SERIES[0], "after tax, sold at the end"))
+    ):
+        v = [100 * row[k][idx_] for k in names]
+        axes[1].bar(xs + (j - 0.5) * 0.38, v, 0.38, color=c, label=lab)
+        for i, x in enumerate(v):
+            axes[1].text(
+                i + (j - 0.5) * 0.38,
+                x + 0.4,
+                f"{x:.1f}%",
+                ha="center",
+                fontsize=8,
+                color=plots.TEXT,
+            )
+    axes[1].set_xticks(xs, ["DIY\nmomentum", "Momentum 30\nfund", "NIFTY 50"])
+    axes[1].set_ylim(0, 36)
+    axes[1].set_ylabel("% a year")
+    axes[1].legend(fontsize=8, loc="upper right")
+    fig.suptitle(
+        "After costs and tax, DIY momentum beat the fund by about 12 points a year (no dividends)",
+        x=0.02,
+        ha="left",
+    )
+    fig.tight_layout()
+    plots.save(fig, out_dir, "verdict")
+    return res
+
+
 REPORTS: dict[str, Callable[[Path], dict]] = {
     "signal": report_signal,
     "universe": report_universe,
@@ -921,4 +1046,5 @@ REPORTS: dict[str, Callable[[Path], dict]] = {
     "costs": report_costs,
     "tax": report_tax,
     "crash": report_crash,
+    "verdict": report_verdict,
 }

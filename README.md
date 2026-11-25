@@ -21,7 +21,7 @@ data by GitHub Actions.
 - [x] Costs and turnover: delivery charges, rebalance frequency with start-month luck, hold bands
 - [x] Tax: short- and long-term gains with lot-by-lot accounting, holding periods, buy and hold
 - [x] Momentum crashes: worst spells, a NIFTY trend filter and volatility scaling
-- [ ] Against the Nifty200 Momentum 30 fund and NIFTY after costs and tax
+- [x] Against the Nifty200 Momentum 30 fund and NIFTY after costs and tax, with a luck test
 
 ## Findings
 
@@ -172,13 +172,37 @@ starts in 2013, so 2008 and its rebound are not in it.
   Sharpes of 0.64–0.76.
 - **One good setting among six is not a rule.** The 6-month filter's gain sits next to two filter
   lengths that lost, and every filter adds taxable sales; none is a reliable improvement on these years.
+### 7. After costs and tax, DIY momentum beat the Momentum 30 fund by 12 points a year, but its design was chosen on these years
+
+<a href="docs/img/verdict.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/verdict.png"><img src="docs/img/verdict.gif" alt="Growth since August 2020 and returns before and after tax for DIY momentum, a Nifty200 Momentum 30 fund and NIFTY 50" width="720"></picture></a>
+
+₹10 lakh in the rule built in findings 1–5: each month the 20 most-traded stocks' best NSE-style
+scores, equal weight, a hold band of 40, Zerodha delivery charges, and short- and long-term gains tax
+paid each March, with everything sold at the end. The fund is the Nifty200 Momentum 30 price index less a
+0.3% yearly fee (fund factsheets show 0.24–0.32%), bought once and taxed once on the sale; NIFTY 50 the
+same with no fee. The archive has the index from August 2020. No dividends anywhere.
+
+- **The fund made a little more than NIFTY.** August 2020 to November 2026: Momentum 30 fund 15.8% a year
+  before tax, 14.5% after; NIFTY 50 13.7% and 12.5%.
+- **DIY made far more.** 30.3% a year before tax, 26.8% after, over the same months; from January 2014,
+  25.4% and 22.6% against NIFTY's 11.8% and 10.9%.
+- **Unlikely to be luck alone.** The monthly edge over NIFTY (+13.1% a year, 2014–2026, after costs) had
+  a 0.3% chance with no real edge in a 12-month block bootstrap; over the fund (+13.6%, 75 months), 0.5%.
+  Trading the day after the signal instead of at its close cost 0.4 points a year.
+- **But the rule was designed on the same years.** The score, 20 stocks and the band of 40 were chosen in
+  findings 1–4 by comparing choices over 2014–2026, the bootstrap doesn't allow for that search, and the
+  edge leans on mid-sized companies that the index weights down (finding 3) during a strong decade for
+  them. Weighting by size, as the index does, gave most of it back.
+- **The fund does what it says.** Motilal Oswal's Momentum 30 ETF made 10.73% a year from August 2022
+  against the price index's 10.55%, so the fund pays the index's dividends and its fee is small.
 
 ## Quick start
 
 ```bash
 uv sync
 uv run python scripts/fetch_data.py         # Yahoo Finance -> data/prices.parquet
-MO_LAKE_DIR=... uv run mo report signal     # also: universe, portfolio, costs, tax, crash
+MO_LAKE_DIR=... uv run mo report signal     # also: universe, portfolio, costs, tax,
+                                            # crash, verdict
 uv run python scripts/build_site.py         # momentum lab -> site/index.html
 uv run pytest
 ```
@@ -196,6 +220,8 @@ NIFTY 200 file. Event studies on delisted stocks can read a local NSE bhavcopy a
   long-term gains, set-off, carried losses and yearly tax; its pre-tax path matches the backtest.
 - `src/mo/crash.py`: the trend filter, volatility scaling and drawdown table, each deciding at one
   month-end for the next month.
+- `src/mo/luck.py`: a circular block bootstrap of monthly excess returns (the chance of an edge this
+  large with none).
 - `src/mo/signals.py`: the momentum signals and their monthly evaluation (rank IC, top 20 against the
   universe, quintiles).
 
