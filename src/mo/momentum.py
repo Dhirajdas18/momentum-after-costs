@@ -295,7 +295,7 @@ def max_drawdown(equity: pd.Series) -> float:
     return float((equity / equity.cummax() - 1).min())
 
 
-# Zerodha delivery charges as in the reference model spec §6 (slightly conservative: Zerodha's page in
+# Zerodha delivery charges as in the reference spec §6 (slightly conservative: Zerodha's page in
 # Nov 2026 lists NSE 0.00307% and DP ₹15.34 including GST): no brokerage; STT 0.1% each
 # side; stamp duty 0.015% on buys; NSE transaction 0.00322% and SEBI 0.0001% each side with 18% GST;
 # about ₹16 depository (DP) charge per stock per day it is sold.

@@ -168,7 +168,7 @@ def _stats(eq: pd.Series) -> dict:
 def report_universe(out_dir: Path) -> dict:
     """Survivorship and liquidity: the top 20 by the NSE-style score on the universe as it was
     each month against today's NIFTY 200 applied to the past (both on the archive's prices, no
-    dividends), smaller universes, the reference model's ₹50 crore turnover rule, delistings and capacity.
+    dividends), smaller universes, the reference ₹50 crore turnover rule, delistings and capacity.
     Needs MO_LAKE_DIR. Before costs."""
     from mo.data import SYMBOLS
     from mo.momentum import backtest, month_end_prices
